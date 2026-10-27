@@ -269,3 +269,5 @@ Layout: `src/engine` (pricing, analytics, signals, strategies, risk, backtests) 
 - Updates come only from the repository baked in at build time. The launcher looks the release up itself and checks the exe's SHA-256 before swapping it in. Android only accepts APKs from that repository, and the system installer requires the same signing key.
 - Kite logins carry a one-time `state` value, so a login the app didn't start is ignored. When another program already holds the port, the app has it prove it knows a per-user secret before trusting it.
 - API keys and tokens stay in the app's storage on your computer or phone. Android backup is off.
+#   o p t i o n - t r a d i n g  
+ 
