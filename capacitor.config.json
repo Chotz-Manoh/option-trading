@@ -1,0 +1,25 @@
+{
+  "appId": "com.devkodz.optionpulse",
+  "appName": "OptionPulse",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "allowNavigation": [
+      "kite.zerodha.com",
+      "*.zerodha.com",
+      "upstox.com",
+      "*.upstox.com"
+    ]
+  },
+  "android": {
+    "backgroundColor": "#000000"
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    },
+    "LocalNotifications": {
+      "iconColor": "#30D158"
+    }
+  }
+}

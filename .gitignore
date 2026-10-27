@@ -1,0 +1,10 @@
+node_modules/
+dist/
+desktop/web/
+release/
+*.log
+.DS_Store
+# Signing keys never go into the repository — they are GitHub secrets.
+signing/
+*.jks
+*.keystore

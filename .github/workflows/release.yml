@@ -1,0 +1,139 @@
+# Builds OptionPulse for Windows (.exe) and Android (.apk) and publishes both as a GitHub Release.
+# Installed apps check this repository's latest release and update themselves in one click.
+#
+# Start a release:  Actions → "Build & release" → Run workflow → enter a version (e.g. 1.0.1)
+#             or:  git tag v1.0.1 && git push origin v1.0.1
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   ANDROID_KEYSTORE_BASE64   base64 of signing/optionpulse-release.jks
+#   ANDROID_KEYSTORE_PASSWORD
+#   ANDROID_KEY_ALIAS         optionpulse
+#   ANDROID_KEY_PASSWORD
+name: Build & release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version number, e.g. 1.0.1 (must be higher than the last release)"
+        required: true
+        default: "1.9.0"
+      notes:
+        description: "What's new (shown in the app's update banner)"
+        required: false
+        default: "Improvements and fixes."
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          V="$INPUT_VERSION"
+          if [ -z "$V" ]; then V="${GITHUB_REF_NAME#v}"; fi
+          if ! [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "::error::Version must look like 1.2.3 (got '$V')"; exit 1; fi
+          IFS=. read -r MA MI PA <<< "$V"
+          echo "APP_VERSION=$V" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$(( MA * 10000 + MI * 100 + PA ))" >> "$GITHUB_ENV"
+          echo "UPDATE_REPO=$GITHUB_REPOSITORY" >> "$GITHUB_ENV"
+          echo "Building OptionPulse $V for $GITHUB_REPOSITORY"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install, test and build the app
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      # ---------- Windows ----------
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache: false
+
+      - name: Build OptionPulse-Setup.exe
+        run: |
+          mkdir -p release
+          rm -rf desktop/web && cp -r dist desktop/web
+          cd desktop
+          go vet ./...
+          GOOS=windows go vet ./...
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
+            -ldflags "-s -w -H=windowsgui -X main.version=$APP_VERSION -X main.updateRepo=$UPDATE_REPO" -o ../release/OptionPulse-Setup.exe .
+          cd ..
+          node scripts/win-resources.mjs release/OptionPulse-Setup.exe build/OptionPulse.ico "$APP_VERSION"
+
+      # ---------- Android ----------
+      # Lightweight native build (android-native/): Ubuntu's Android tools, no Gradle download needed.
+      # (android/ is the full Capacitor project, for building in Android Studio instead.)
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android build tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends aapt dalvik-exchange apksigner zipalign android-sdk-platform-23
+
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::Add the ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD secrets first (see README → Android). Without the same key every time, phones refuse to install updates."
+            exit 1
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build OptionPulse.apk
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          chmod +x android-native/build.sh
+          android-native/build.sh "$APP_VERSION" "$ANDROID_KEYSTORE_FILE" "$ANDROID_KEYSTORE_PASSWORD" "$UPDATE_REPO" release/OptionPulse.apk
+          ls -la release
+
+      # ---------- Publish ----------
+      - name: Checksums and release notes
+        env:
+          NOTES: ${{ github.event.inputs.notes }}
+        run: |
+          (cd release && sha256sum OptionPulse-Setup.exe OptionPulse.apk > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          {
+            echo "${NOTES:-Improvements and fixes.}"
+            echo
+            echo "**Windows:** download **OptionPulse-Setup.exe** and double-click it (if SmartScreen appears: More info → Run anyway)."
+            echo "**Android:** download **OptionPulse.apk** on your phone and tap it (allow installing from your browser once)."
+            echo "Already installed? The app shows an **Update now** banner — one tap updates it."
+          } > release/NOTES.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.APP_VERSION }}
+          name: OptionPulse ${{ env.APP_VERSION }}
+          body_path: release/NOTES.md
+          make_latest: "true"
+          files: |
+            release/OptionPulse-Setup.exe
+            release/OptionPulse.apk
+            release/SHA256SUMS.txt

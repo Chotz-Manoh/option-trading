@@ -1,0 +1,10 @@
+# Only the web app and api/ go to Vercel; the native shells and the Windows launcher are built elsewhere.
+android
+android-native
+desktop
+build
+release
+scripts
+signing
+tests
+*.log
