@@ -174,14 +174,22 @@ export function DataNotice() {
   }
   // Upstox logins end at 3:30 AM daily: offer the one-tap login right here when the key is already saved.
   const upstoxRelogin = settings.dataSource === 'upstox' && (!settings.upstoxToken || upstoxTokenExpired()) && !!upstoxCreds().apiKey
+  // Kite session expired: show a friendlier message with a direct log-in action.
+  const isKiteExpired = settings.dataSource === 'kite' && lastError && /session expired|not logged in/i.test(lastError)
   if (!lastError && !upstoxRelogin) return null
   return (
     <div className="banner warn" role="alert">
-      <Icon name="warn" color="var(--orange)" size={18} />
-      <span className="grow small">{upstoxRelogin ? 'Your Upstox login has ended (Upstox logins last until 3:30 AM). Log in again for live NSE & BSE prices.' : lastError}</span>
+      <Icon name="key" color="var(--orange)" size={18} />
+      <span className="grow small">
+        {upstoxRelogin
+          ? 'Upstox session ended (resets at 3:30 AM daily). Log in again for live prices.'
+          : isKiteExpired
+            ? 'Kite session ended (resets at 6 AM daily). Log in again to resume live prices.'
+            : lastError}
+      </span>
       {upstoxRelogin
-        ? <button className="btn primary" style={{ padding: '6px 12px', whiteSpace: 'nowrap' }} onClick={() => { try { startUpstoxLogin() } catch { go('settings') } }}>Log in with Upstox</button>
-        : <button className="btn" style={{ padding: '6px 12px', whiteSpace: 'nowrap' }} onClick={() => go('settings')}>Fix in Settings</button>}
+        ? <button className="btn primary" style={{ padding: '6px 12px', whiteSpace: 'nowrap' }} onClick={() => { try { startUpstoxLogin() } catch { go('settings') } }}>Log in</button>
+        : <button className="btn primary" style={{ padding: '6px 12px', whiteSpace: 'nowrap' }} onClick={() => go('settings')}>{isKiteExpired ? 'Log in' : 'Fix in Settings'}</button>}
     </div>
   )
 }

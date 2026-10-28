@@ -1,5 +1,5 @@
 import { App as CapApp } from '@capacitor/app'
-import { type ComponentType, Suspense, createElement, lazy, useEffect, useState } from 'react'
+import { type ComponentType, Suspense, createElement, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { type Section, useApp } from '../data/appStore'
 import { extractRequestToken } from '../data/kite'
 import { APP_VERSION, hosted, nativeShell, pingLauncher, platform, store, viaLauncher } from '../data/platform'
@@ -89,11 +89,66 @@ function consumeKiteRedirect() {
 
 let started = false
 
+/** Pull-to-refresh: drag down when scrolled to top → triggers refreshAll(). */
+function usePullToRefresh(ref: React.RefObject<HTMLElement | null>) {
+  const [pulling, setPulling] = useState(false)
+  const [pullY, setPullY] = useState(0)
+  const startY = useRef(0)
+  const active = useRef(false)
+
+  const onRefresh = useCallback(async () => {
+    setPulling(true)
+    setPullY(60)
+    try { await useApp.getState().refreshAll() } catch { /* ignore */ }
+    // Hold the spinner briefly so user sees feedback
+    await new Promise((r) => setTimeout(r, 400))
+    setPulling(false)
+    setPullY(0)
+  }, [])
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const onStart = (e: TouchEvent) => {
+      if (el.scrollTop > 5) return
+      startY.current = e.touches[0].clientY
+      active.current = true
+    }
+    const onMove = (e: TouchEvent) => {
+      if (!active.current) return
+      const dy = e.touches[0].clientY - startY.current
+      if (dy < 0) { active.current = false; setPullY(0); return }
+      // Dampen the pull distance
+      const pull = Math.min(80, dy * 0.45)
+      setPullY(pull)
+      if (pull > 10) e.preventDefault()
+    }
+    const onEnd = () => {
+      if (!active.current) return
+      active.current = false
+      if (pullY >= 55) void onRefresh()
+      else setPullY(0)
+    }
+    el.addEventListener('touchstart', onStart, { passive: true })
+    el.addEventListener('touchmove', onMove, { passive: false })
+    el.addEventListener('touchend', onEnd, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onStart)
+      el.removeEventListener('touchmove', onMove)
+      el.removeEventListener('touchend', onEnd)
+    }
+  }, [ref, pullY, onRefresh])
+
+  return { pulling, pullY }
+}
+
 export function App() {
   const { section, go, settings, setSettings, toast, update, showToast, launcherDown, unpaired, sessionReady, builderLegs, ticket, closeTicket } = useApp()
   const wide = useWide()
   const [dismissedUpdate, setDismissedUpdate] = useState<string>()
   const [installing, setInstalling] = useState(false)
+  const mainRef = useRef<HTMLElement>(null)
+  const { pulling, pullY } = usePullToRefresh(mainRef)
 
   useEffect(() => {
     if (started) return
@@ -119,7 +174,7 @@ export function App() {
     }
   }, [])
 
-  useEffect(() => { document.querySelector('.main')?.scrollTo({ top: 0 }) }, [section])
+  useEffect(() => { mainRef.current?.scrollTo({ top: 0 }) }, [section])
 
   // Android Back button: go up one level; on the home screen, leave the app.
   useEffect(() => {
@@ -186,7 +241,14 @@ export function App() {
           <span className="tiny muted" style={{ padding: '8px 12px' }}>Version {APP_VERSION}</span>
         </nav>
       )}
-      <main className={`main ${wide ? 'desktop' : ''}`}>
+      <main ref={mainRef} className={`main ${wide ? 'desktop' : ''}`}>
+        {!wide && pullY > 0 && (
+          <div className="pull-indicator" style={{ height: pullY, opacity: Math.min(1, pullY / 55) }}>
+            <div className={`pull-spinner ${pulling ? 'spinning' : ''}`} style={{ transform: `rotate(${pulling ? 0 : pullY * 4}deg)` }}>
+              <Icon name="refresh" size={22} color="var(--green)" />
+            </div>
+          </div>
+        )}
         {unpaired && (
           <div className="page" style={{ paddingBottom: 0 }}>
             <div className="banner warn">
