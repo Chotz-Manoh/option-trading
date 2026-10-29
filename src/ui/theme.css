@@ -295,8 +295,44 @@ a { color: var(--green); }
 .idea-why { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: 10px; background: var(--card); }
 .idea .btn.primary { width: 100%; }
 
-/* ---- Pull to refresh ---- */
-.pull-indicator { display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; overflow: hidden; transition: height 0.25s ease-out, opacity 0.2s; flex-shrink: 0; }
-.pull-spinner { transition: transform 0.15s ease-out; }
+/* ---- Pull to refresh (overlay: never pushes the page content down) ---- */
+.main { position: relative; }
+.pull-indicator { position: absolute; top: env(safe-area-inset-top); left: 0; right: 0; z-index: 5; pointer-events: none; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px; overflow: hidden; transition: opacity 0.15s; }
+.pull-spinner { width: 36px; height: 36px; border-radius: 50%; background: var(--card); border: 1px solid var(--edge); box-shadow: var(--shadow); display: grid; place-items: center; }
 .pull-spinner.spinning { animation: spin 0.7s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+/* thin indeterminate bar at the top of a card while it recomputes (no text that appears/disappears) */
+.progress-line { height: 2px; border-radius: 2px; margin: -6px 0 -4px; background: linear-gradient(90deg, transparent, var(--green), transparent); background-size: 50% 100%; animation: progress 1s linear infinite; }
+@keyframes progress { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+
+/* ---- Top 5 rows & detail page ---- */
+.idea-line { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 12.5px; }
+.idea-line b { font-weight: 700; }
+.plan-steps { display: flex; flex-direction: column; gap: 8px; }
+.plan-steps > div { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.45; }
+.plan-steps .step { width: 24px; height: 24px; border-radius: 50%; background: var(--blue); color: #000; font-weight: 800; font-size: 12px; display: grid; place-items: center; flex-shrink: 0; margin-top: 1px; }
+details.help { background: var(--card); border: 1px solid var(--edge); border-radius: 14px; padding: 10px 14px; }
+details.help summary { cursor: pointer; font-weight: 600; font-size: 14px; color: var(--muted); list-style: none; display: flex; align-items: center; gap: 6px; }
+details.help summary::before { content: '›'; font-size: 18px; line-height: 1; transition: transform 0.15s; }
+details.help[open] summary::before { transform: rotate(90deg); }
+details.help p { margin: 8px 0 0; }
+.board-row { min-height: 64px; }
+.hero-wait { min-height: 112px; justify-content: center; }
+
+/* ---- Strategies ---- */
+.rule { background: var(--card); border: 1px solid var(--edge); border-radius: 14px; overflow: hidden; }
+.rule-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; border: 0; background: transparent; text-align: left; }
+.rule-body { display: flex; flex-direction: column; gap: 6px; padding: 0 14px 12px; }
+.rule-body .kv > span:last-child { color: var(--text); max-width: 72%; line-height: 1.4; }
+
+/* ---- Phone: tighter, calmer spacing ---- */
+@media (max-width: 600px) {
+  .page { gap: 12px; padding: 8px 14px 20px; }
+  .card { padding: 14px; gap: 10px; border-radius: 16px; }
+  .card-title { font-size: 16px; }
+  .tile { padding: 8px 9px; }
+  .greet h1 { font-size: 22px; }
+  .quick { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .quick-item { padding: 10px 4px; font-size: 11px; gap: 4px; }
+  .top5-btn b { font-size: 15px; }
+}

@@ -5,6 +5,7 @@ import { DEFAULT_CHARGES, type ChargeSettings } from '../engine/riskEngine'
 import { evaluateSignal, type IndexSignal } from '../engine/signalEngine'
 import { type MasterSetup, masterSetup } from '../engine/masterRules'
 import { type ProResult, proStrategies } from '../engine/proStrategies'
+import type { BuyIdea } from '../engine/quickBuys'
 import { buildTemplate, legsFromTemplates, type OptionLeg, type StrategyTemplate } from '../engine/strategyEngine'
 import {
   type Candle, type IndexSymbol, type OptionChain, type OptionType, type VolatilityBaseline,
@@ -19,7 +20,7 @@ import { type DataSource, type MarketDataProvider, NoSourceProvider, friendlyErr
 import { checkForUpdate, notify, type UpdateInfo } from './services'
 import { UpstoxProvider } from './upstoxProvider'
 
-export type Section = 'desk' | 'chart' | 'signals' | 'chain' | 'analytics' | 'strategy' | 'auto' | 'kite' | 'orders' | 'tools' | 'backtest' | 'journal' | 'alerts' | 'playbook' | 'settings' | 'more' | 'detail' | 'phone' | 'top5'
+export type Section = 'desk' | 'chart' | 'signals' | 'chain' | 'analytics' | 'strategy' | 'auto' | 'kite' | 'orders' | 'tools' | 'backtest' | 'journal' | 'alerts' | 'playbook' | 'settings' | 'more' | 'detail' | 'phone' | 'top5' | 'top5detail' | 'strategies'
 
 export interface Settings {
   dataSource: DataSource
@@ -126,6 +127,8 @@ interface State {
   brokerError?: string
   brokerUpdated?: number
   ticket?: TicketInit
+  /** The Top 5 idea open on its own page. */
+  ideaDetail?: BuyIdea
   update: UpdateInfo | null
   updateError?: string
   toast?: string
@@ -158,6 +161,8 @@ interface State {
   showToast: (t?: string) => void
   openTicket: (t: TicketInit) => void
   closeTicket: () => void
+  /** Opens a Top 5 idea on its own page. */
+  openIdeaDetail: (i: BuyIdea) => void
 }
 
 let provider: MarketDataProvider = new NoSourceProvider()
@@ -169,6 +174,18 @@ let hotIndices: () => IndexSymbol[] = () => []
 export function registerHotIndices(f: () => IndexSymbol[]) { hotIndices = f }
 /** A refresh asked for while another is running: run once more when it ends (instead of dropping it). */
 let refreshAgain = false
+/**
+ * The last problem per index. A quiet refresh touches only some indices, so the banner must be built from all of
+ * them — otherwise it appeared and disappeared with every cycle, and the page jumped.
+ */
+const indexErrors: Partial<Record<IndexSymbol, string>> = {}
+function currentError(prev?: string): string | undefined {
+  const next = INDEX_IDS.map((i) => indexErrors[i]).find(Boolean)
+  if (!next) return undefined
+  // Same problem on a different index ("Nifty 50: …" vs "Sensex: …"): keep the text that is already on screen.
+  const core = (s: string) => s.replace(/^[^:]+: /, '')
+  return prev && core(prev) === core(next) ? prev : next
+}
 function useProvider(s: Settings) {
   provider = makeProvider(s)
   providerGen++
@@ -241,6 +258,7 @@ export const useApp = create<State>((set, get) => ({
   update: null,
   openTicket: (t) => set({ ticket: t }),
   closeTicket: () => set({ ticket: undefined }),
+  openIdeaDetail: (i) => set({ ideaDetail: i, section: 'top5detail' }),
 
   reconnect: () => {
     useProvider(get().settings)
@@ -264,9 +282,12 @@ export const useApp = create<State>((set, get) => ({
       set({ chains: {}, analyses: {}, signals: {}, masters: {}, pros: {}, daily: {}, intraday: {}, baselines: {}, expiries: {}, selectedExpiry: {}, lastError: undefined })
       void get().refreshAll()
     }
-    if ('refreshSeconds' in p || 'autoRefresh' in p || 'dataSource' in p) startTimer()
-    if ('broker' in p || 'upstoxToken' in p) { set({ positions: [], orders: [], funds: undefined, brokerError: undefined }); void get().refreshBroker() }
-    if ('lotOverrides' in p) void get().refreshAll(true)
+    // Only react to keys whose value actually changed: phones served by the PC receive the whole settings object
+    // on every sync, and resetting the account card / timers for nothing made the screen flicker.
+    const changed = (k: keyof Settings) => k in p && JSON.stringify(p[k]) !== JSON.stringify(old[k])
+    if (changed('refreshSeconds') || changed('autoRefresh') || changed('dataSource')) startTimer()
+    if (changed('broker') || changed('upstoxToken')) { set({ positions: [], orders: [], funds: undefined, brokerError: undefined }); void get().refreshBroker() }
+    if (changed('lotOverrides')) void get().refreshAll(true)
   },
 
   go: (s) => set({ section: s }),
@@ -291,17 +312,16 @@ export const useApp = create<State>((set, get) => ({
     do {
       refreshAgain = false
       const gen = providerGen
-      let firstError: string | undefined
       const sel = get().selectedIndex
       // Live: the index on screen refreshes every time, the other four every third time (broker rate limits).
       const full = !quiet || get().settings.dataSource === 'demo' || refreshCount++ % 3 === 0
       for (const i of [sel, ...INDEX_IDS.filter((x) => x !== sel)]) {
         if (gen !== providerGen) break // the source changed meanwhile: start over with the new one
         if (!full && i !== sel && get().chains[i] && !hotIndices().includes(i)) continue
-        try { await refresh(i) } catch (e) { firstError ??= `${indexInfo(i).displayName}: ${friendlyError(e)}` }
+        try { await refresh(i); delete indexErrors[i] } catch (e) { indexErrors[i] = `${indexInfo(i).displayName}: ${friendlyError(e)}` }
         await yieldToUI()
       }
-      if (gen === providerGen) set({ lastError: firstError, lastUpdated: Date.now() })
+      if (gen === providerGen) set({ lastError: currentError(get().lastError), lastUpdated: Date.now() })
       else refreshAgain = true
     } while (refreshAgain)
     set({ loading: false })
@@ -309,8 +329,8 @@ export const useApp = create<State>((set, get) => ({
   },
 
   refreshIndex: async (i) => {
-    try { await refresh(i); set({ lastError: undefined }) } catch (e) { set({ lastError: `${indexInfo(i).displayName}: ${friendlyError(e)}` }) }
-    set({ lastUpdated: Date.now() })
+    try { await refresh(i); delete indexErrors[i] } catch (e) { indexErrors[i] = `${indexInfo(i).displayName}: ${friendlyError(e)}` }
+    set({ lastError: currentError(get().lastError), lastUpdated: Date.now() })
   },
 
   setExpiry: async (i, day) => {
@@ -345,11 +365,16 @@ export const useApp = create<State>((set, get) => ({
       const [pos, ord, fun] = await Promise.allSettled([fetchPositions(b), fetchOrders(b), fetchFunds(b)])
       if (get().settings.broker !== b) return // switched account meanwhile
       const errs = [pos, ord, fun].filter((r): r is PromiseRejectedResult => r.status === 'rejected').map((r) => friendlyError(r.reason))
+      // Replace an object only when its contents changed, so a 5-second poll with nothing new re-renders nothing.
+      const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+      const s = get()
       set({
-        ...(pos.status === 'fulfilled' ? { positions: pos.value } : {}),
-        ...(ord.status === 'fulfilled' ? { orders: ord.value } : {}),
-        ...(fun.status === 'fulfilled' ? { funds: fun.value } : {}),
-        brokerError: errs[0], brokerUpdated: Date.now(), kiteLoggedIn: kiteLoggedIn(),
+        ...(pos.status === 'fulfilled' && !same(pos.value, s.positions) ? { positions: pos.value } : {}),
+        ...(ord.status === 'fulfilled' && !same(ord.value, s.orders) ? { orders: ord.value } : {}),
+        ...(fun.status === 'fulfilled' && !same(fun.value, s.funds) ? { funds: fun.value } : {}),
+        ...(errs[0] !== s.brokerError ? { brokerError: errs[0] } : {}),
+        ...(kiteLoggedIn() !== s.kiteLoggedIn ? { kiteLoggedIn: kiteLoggedIn() } : {}),
+        brokerUpdated: Date.now(),
       })
     } finally { brokerBusy = false }
   },

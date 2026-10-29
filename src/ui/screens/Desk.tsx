@@ -1,6 +1,7 @@
 // Trade Desk: everything a trader needs on one screen — live index strip, Master verdict, chart with levels,
 // ATM call/put cards with one-tap actions, open positions, basket and quick access to every section.
 import { useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '../../data/appStore'
 import { useAuto } from '../../data/autoTrader'
 import { verdictColor } from '../../engine/masterRules'
@@ -21,7 +22,9 @@ const QUICK: { id: Parameters<ReturnType<typeof useApp.getState>['go']>[0]; labe
 
 export function DeskScreen() {
   const { selectedIndex, setSelectedIndex, chains, signals, masters, intraday, premiumTrack, positions, funds, builderLegs, settings, go, setBuilderIndex, setBuilderLegs, refreshAll, loading, lastUpdated, openTicket } = useApp()
-  const auto = useAuto()
+  // Only the three fields this screen shows — Auto Trade writes bookkeeping to its store on every refresh,
+  // and subscribing to all of it re-rendered the whole Desk each time.
+  const auto = useAuto(useShallow((a) => ({ positions: a.positions, armed: a.armed, mode: a.config.mode })))
   const [tf, setTf] = useState<'5m' | 'daily'>('5m')
   const [phoneCard, setPhoneCard] = useState(() => platform === 'desktop' && !store.get<boolean>('phonecard.dismissed', false))
   const wide = useWide()
@@ -35,15 +38,16 @@ export function DeskScreen() {
   const brokerReady = !brokerNotReady(settings.broker)
   const openPositions = positions.filter((p) => p.qty !== 0)
 
+  const noChain = () => useApp.getState().showToast(settings.dataSource === 'none' ? 'Connect live data first (Settings → Data source).' : 'Live prices have not loaded yet — see the notice above.')
   const addLeg = (type: OptionType, action: 'Buy' | 'Sell', strike?: number) => {
-    if (!chain) return
+    if (!chain) { noChain(); return }
     if (useApp.getState().builderIndex !== selectedIndex) setBuilderIndex(selectedIndex)
     setBuilderLegs([...useApp.getState().builderLegs, legFromChain(type, action, strike ?? atmStrike(chain), chain, settings.riskFreeRate)])
     useApp.getState().showToast(`${action} ${grouped(strike ?? atmStrike(chain))} ${type} added to the basket.`)
   }
   /** Opens the order ticket; a buy in the direction of a Master plan carries its stop-loss and size. */
   const trade = (type: OptionType, side: 'BUY' | 'SELL', strike?: number) => {
-    if (!chain) return
+    if (!chain) { noChain(); return }
     const k = strike ?? atmStrike(chain)
     const plan = m?.plan && m.plan.type === type && m.plan.strike === k && side === 'BUY' ? m.plan : undefined
     openTicket({ index: selectedIndex, expiry: chain.expiry, strike: k, type, side, lots: plan?.lots || 1, stopLoss: plan?.stop })
@@ -83,7 +87,7 @@ export function DeskScreen() {
       {settings.dataSource !== 'none' && (
         <button className="btn primary top5-btn" onClick={() => go('top5')}>
           <Icon name="trophy" size={20} />
-          <span className="grow" style={{ textAlign: 'left' }}><b>Today's Top 5 · buy only</b><span className="tiny" style={{ display: 'block', fontWeight: 500, opacity: 0.8 }}>Strongest calls &amp; puts today + 5 / 10 / 30-min scalps at your win-rate bar</span></span>
+          <span className="grow" style={{ textAlign: 'left' }}><b>Today’s Top 5</b><span className="tiny" style={{ display: 'block', fontWeight: 500, opacity: 0.8 }}>Best calls &amp; puts now + 5 / 10 / 30-min scalps</span></span>
           <Icon name="chev" size={14} />
         </button>
       )}
@@ -178,7 +182,7 @@ export function DeskScreen() {
           <div className="tiles">
             <Tile label="P&L today" value={brokerReady ? inr(pnl) : 'Not connected'} color={brokerReady ? changeColor(pnl) : undefined} sub={brokerReady ? `${openPositions.length} open` : 'Settings → Trading account'} />
             <Tile label="Available funds" value={funds ? inr(funds.available) : '—'} sub={funds ? `used ${inr(funds.used)}` : brokerReady ? 'loading…' : ''} />
-            <Tile label="Auto Trade" value={auto.armed ? (auto.config.mode === 'live' ? 'LIVE on' : 'Paper on') : 'Off'} color={auto.armed ? (auto.config.mode === 'live' ? 'var(--red)' : 'var(--green)') : undefined} sub={open.length ? `${open.length} open` : 'no position'} />
+            <Tile label="Auto Trade" value={auto.armed ? (auto.mode === 'live' ? 'LIVE on' : 'Paper on') : 'Off'} color={auto.armed ? (auto.mode === 'live' ? 'var(--red)' : 'var(--green)') : undefined} sub={open.length ? `${open.length} open` : 'no position'} />
           </div>
           {openPositions.slice(0, 5).map((p) => (
             <div key={p.ref + p.product} className="row small">
@@ -192,7 +196,7 @@ export function DeskScreen() {
           <div className="row" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
             <Icon name="strategy" color="var(--green)" />
             <span className="grow small" style={{ flex: '1 1 150px' }}>Basket: <b>{builderLegs.filter((l) => l.enabled).length} leg{builderLegs.length === 1 ? '' : 's'}</b>{builderLegs.length ? ` · ${indexInfo(useApp.getState().builderIndex).shortName}` : ''}</span>
-            <button className="btn primary" disabled={!builderLegs.length} onClick={() => go('strategy')}><Icon name="send" size={16} />Review & send to Kite</button>
+            <button className="btn primary" disabled={!builderLegs.length} onClick={() => go('strategy')}><Icon name="send" size={16} />Review basket</button>
           </div>
         </Card>
 
@@ -200,6 +204,7 @@ export function DeskScreen() {
         <Card title="Everything" icon="grid">
           <div className="quick">
             {QUICK.map((q) => <button key={q.id} className="quick-item" onClick={() => go(q.id)}><Icon name={q.icon} size={22} color="var(--green)" /><span>{q.label}</span></button>)}
+            <button className="quick-item" onClick={() => go('strategies')}><Icon name="bulb" size={22} color="var(--green)" /><span>Strategies</span></button>
             <button className="quick-item" onClick={() => go('settings')}><Icon name="gear" size={22} color="var(--green)" /><span>Settings</span></button>
           </div>
         </Card>

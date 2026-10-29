@@ -19,7 +19,9 @@ function screen<M>(load: () => Promise<M>, pick: (m: M) => ComponentType) {
   let pending: Promise<void> | undefined
   const preload = () => (pending ??= load().then((m) => { ready = pick(m) }, (e) => { pending = undefined; throw e }))
   const Lazy = lazy(() => preload().then(() => ({ default: ready! })))
-  const Screen = () => (ready ? createElement(ready) : createElement(Lazy))
+  // Always the same element type: React caches a resolved lazy() module, so once fetched it renders synchronously.
+  // (Switching from Lazy to the real component re-mounted the screen once and replayed its animation.)
+  const Screen = () => createElement(Lazy)
   return Object.assign(Screen, { preload })
 }
 const SignalsScreen = screen(() => import('./screens/Signals'), (m) => m.SignalsScreen)
@@ -39,7 +41,9 @@ const PhoneScreen = screen(() => import('./screens/PhoneAccess'), (m) => m.Phone
 const Top5Screen = screen(() => import('./screens/Top5'), (m) => m.Top5Screen)
 const PositionsScreen = screen(() => import('./screens/Positions'), (m) => m.PositionsScreen)
 const OrdersScreen = screen(() => import('./screens/Orders'), (m) => m.OrdersScreen)
-const PRELOAD = [Top5Screen, ChainScreen, PositionsScreen, OrdersScreen, ChartScreen, StrategyScreen, SignalsScreen, SignalDetail, AnalyticsScreen, AutoTradeScreen, ToolsScreen, BacktestScreen, JournalScreen, AlertsScreen, PlaybookScreen, SettingsScreen]
+const Top5Detail = screen(() => import('./screens/Top5'), (m) => m.Top5Detail)
+const StrategiesScreen = screen(() => import('./screens/Strategies'), (m) => m.StrategiesScreen)
+const PRELOAD = [Top5Screen, Top5Detail, ChainScreen, PositionsScreen, OrdersScreen, ChartScreen, StrategiesScreen, StrategyScreen, SignalsScreen, SignalDetail, AnalyticsScreen, AutoTradeScreen, ToolsScreen, BacktestScreen, JournalScreen, AlertsScreen, PlaybookScreen, SettingsScreen]
 
 const TABS: { id: Section; label: string; icon: string }[] = [
   { id: 'desk', label: 'Desk', icon: 'grid' },
@@ -50,20 +54,23 @@ const TABS: { id: Section; label: string; icon: string }[] = [
 ]
 
 const MORE: { id: Section; label: string; icon: string; note: string }[] = [
-  { id: 'top5', label: 'Today’s Top 5 · buy only', icon: 'trophy', note: 'Strongest calls & puts for the day, plus 5 / 10 / 30-minute scalps at your win-rate bar' },
-  { id: 'orders', label: 'Orders', icon: 'history', note: 'Today’s orders — modify or cancel open ones' },
-  { id: 'strategy', label: 'Basket', icon: 'strategy', note: 'Multi-leg strategies with payoff — place all legs at once' },
-  { id: 'signals', label: 'Signals', icon: 'gauge', note: 'Index ranking, Master Setup and 10-factor reasons' },
-  { id: 'analytics', label: 'OI & volatility', icon: 'bars', note: 'OI by strike, PCR, max pain, IV smile' },
-  { id: 'auto', label: 'Auto Trade', icon: 'play', note: 'Rule-based buy & exit — Paper or Live via Kite' },
-  { id: 'tools', label: 'Calculators', icon: 'calc', note: 'Greeks, IV, position size, charges, Kelly' },
-  { id: 'backtest', label: 'Backtest', icon: 'history', note: 'Test entry rules on past candles' },
-  { id: 'journal', label: 'Journal', icon: 'book', note: 'Log trades and measure your real edge' },
-  { id: 'alerts', label: 'Alerts', icon: 'bell', note: 'Spot, PCR, IV and score alerts' },
-  { id: 'playbook', label: 'Playbook', icon: 'cap', note: '41 tactics — incl. how India’s best-known option desks trade' },
-  ...(platform === 'desktop' ? [{ id: 'phone' as Section, label: 'Use on iPhone & phones', icon: 'phone', note: 'One click — then scan the code with your iPhone' }] : []),
-  { id: 'settings', label: 'Settings', icon: 'gear', note: 'Live data, trading account, updates, charges' },
+  { id: 'top5', label: 'Today’s Top 5', icon: 'trophy', note: 'Best calls & puts today + quick scalps' },
+  { id: 'strategies', label: 'Strategies', icon: 'bulb', note: 'Pro rules, tips & traps — tap to apply' },
+  { id: 'orders', label: 'Orders', icon: 'history', note: 'Modify or cancel today’s orders' },
+  { id: 'strategy', label: 'Basket', icon: 'strategy', note: 'Multi-leg trades with payoff' },
+  { id: 'signals', label: 'Signals', icon: 'gauge', note: 'Index ranking and reasons' },
+  { id: 'analytics', label: 'OI & volatility', icon: 'bars', note: 'OI, PCR, max pain, IV' },
+  { id: 'auto', label: 'Auto Trade', icon: 'play', note: 'Rule-based entries — paper or live' },
+  { id: 'tools', label: 'Calculators', icon: 'calc', note: 'Greeks, size, charges' },
+  { id: 'backtest', label: 'Backtest', icon: 'history', note: 'Test rules on past candles' },
+  { id: 'journal', label: 'Journal', icon: 'book', note: 'Log trades, see your edge' },
+  { id: 'alerts', label: 'Alerts', icon: 'bell', note: 'Spot, PCR, IV, score' },
+  { id: 'playbook', label: 'Playbook', icon: 'cap', note: '41 articles from India’s top desks' },
+  ...(platform === 'desktop' ? [{ id: 'phone' as Section, label: 'Use on iPhone & phones', icon: 'phone', note: 'Scan a code with your phone' }] : []),
+  { id: 'settings', label: 'Settings', icon: 'gear', note: 'Data, account, updates' },
 ]
+/** Where Back goes from each sub-page that isn't in the More list. */
+const PARENT: Partial<Record<Section, Section>> = { detail: 'signals', top5detail: 'top5' }
 
 const tabFor = (s: Section): Section => (TABS.some((t) => t.id === s) ? s : 'more')
 
@@ -90,57 +97,68 @@ function consumeKiteRedirect() {
 
 let started = false
 
-/** Pull-to-refresh: drag down when scrolled to top → triggers refreshAll(). */
-function usePullToRefresh(ref: React.RefObject<HTMLElement | null>) {
-  const [pulling, setPulling] = useState(false)
+/**
+ * Pull-to-refresh (phones): drag down while scrolled to the top, let go past the threshold → refreshAll().
+ * Self-contained so the finger-tracking state re-renders only this small element, never the whole app.
+ */
+function PullToRefresh({ target }: { target: React.RefObject<HTMLElement | null> }) {
   const [pullY, setPullY] = useState(0)
+  const [busy, setBusy] = useState(false)
   const startY = useRef(0)
   const active = useRef(false)
+  const last = useRef(0)
 
-  const onRefresh = useCallback(async () => {
-    setPulling(true)
-    setPullY(60)
-    try { await useApp.getState().refreshAll() } catch { /* ignore */ }
-    // Hold the spinner briefly so user sees feedback
-    await new Promise((r) => setTimeout(r, 400))
-    setPulling(false)
+  const run = useCallback(async () => {
+    setBusy(true)
+    setPullY(56)
+    try { await useApp.getState().refreshAll() } catch { /* shown in the banner */ }
+    await new Promise((r) => setTimeout(r, 300))
+    setBusy(false)
     setPullY(0)
   }, [])
 
   useEffect(() => {
-    const el = ref.current
+    const el = target.current
     if (!el) return
     const onStart = (e: TouchEvent) => {
-      if (el.scrollTop > 5) return
+      active.current = el.scrollTop <= 2 && !busy
       startY.current = e.touches[0].clientY
-      active.current = true
+      last.current = 0
     }
     const onMove = (e: TouchEvent) => {
       if (!active.current) return
       const dy = e.touches[0].clientY - startY.current
-      if (dy < 0) { active.current = false; setPullY(0); return }
-      // Dampen the pull distance
+      if (dy <= 0) { if (last.current) { last.current = 0; setPullY(0) } return }
       const pull = Math.min(80, dy * 0.45)
-      setPullY(pull)
-      if (pull > 10) e.preventDefault()
+      if (pull > 12) e.preventDefault()
+      if (Math.abs(pull - last.current) >= 2) { last.current = pull; setPullY(pull) }
     }
     const onEnd = () => {
       if (!active.current) return
       active.current = false
-      if (pullY >= 55) void onRefresh()
-      else setPullY(0)
+      if (last.current >= 52) void run()
+      else if (last.current) { last.current = 0; setPullY(0) }
     }
     el.addEventListener('touchstart', onStart, { passive: true })
     el.addEventListener('touchmove', onMove, { passive: false })
     el.addEventListener('touchend', onEnd, { passive: true })
+    el.addEventListener('touchcancel', onEnd, { passive: true })
     return () => {
       el.removeEventListener('touchstart', onStart)
       el.removeEventListener('touchmove', onMove)
       el.removeEventListener('touchend', onEnd)
+      el.removeEventListener('touchcancel', onEnd)
     }
-  }, [ref, pullY, onRefresh])
+  }, [target, busy, run])
 
-  return { pulling, pullY }
+  if (pullY <= 0) return null
+  return (
+    <div className="pull-indicator" style={{ height: pullY, opacity: Math.min(1, pullY / 52) }}>
+      <div className={`pull-spinner ${busy ? 'spinning' : ''}`} style={{ transform: busy ? undefined : `rotate(${pullY * 4}deg)` }}>
+        <Icon name="refresh" size={22} color="var(--green)" />
+      </div>
+    </div>
+  )
 }
 
 export function App() {
@@ -149,7 +167,6 @@ export function App() {
   const [dismissedUpdate, setDismissedUpdate] = useState<string>()
   const [installing, setInstalling] = useState(false)
   const mainRef = useRef<HTMLElement>(null)
-  const { pulling, pullY } = usePullToRefresh(mainRef)
 
   useEffect(() => {
     if (started) return
@@ -185,7 +202,7 @@ export function App() {
       ;(window as unknown as { __opBackButton: () => string }).__opBackButton = () => {
         const s = useApp.getState().section
         if (s === 'desk') return 'exit'
-        go(s === 'detail' ? 'signals' : MORE.some((m) => m.id === s) ? 'more' : 'desk')
+        go(PARENT[s] ?? (MORE.some((m) => m.id === s) ? 'more' : 'desk'))
         return 'handled'
       }
       return
@@ -193,7 +210,7 @@ export function App() {
     const sub = CapApp.addListener('backButton', () => {
       const s = useApp.getState().section
       if (s === 'desk') void CapApp.exitApp()
-      else go(s === 'detail' ? 'signals' : MORE.some((m) => m.id === s) ? 'more' : 'desk')
+      else go(PARENT[s] ?? (MORE.some((m) => m.id === s) ? 'more' : 'desk'))
     })
     return () => { void sub.then((h) => h.remove()) }
   }, [go])
@@ -218,6 +235,8 @@ export function App() {
       case 'settings': return <SettingsScreen />
       case 'phone': return <PhoneScreen />
       case 'top5': return <Top5Screen />
+      case 'top5detail': return <Top5Detail />
+      case 'strategies': return <StrategiesScreen />
       default: return <MoreScreen />
     }
   })()
@@ -243,13 +262,7 @@ export function App() {
         </nav>
       )}
       <main ref={mainRef} className={`main ${wide ? 'desktop' : ''}`}>
-        {!wide && pullY > 0 && (
-          <div className="pull-indicator" style={{ height: pullY, opacity: Math.min(1, pullY / 55) }}>
-            <div className={`pull-spinner ${pulling ? 'spinning' : ''}`} style={{ transform: `rotate(${pulling ? 0 : pullY * 4}deg)` }}>
-              <Icon name="refresh" size={22} color="var(--green)" />
-            </div>
-          </div>
-        )}
+        {!wide && <PullToRefresh target={mainRef} />}
         {unpaired && (
           <div className="page" style={{ paddingBottom: 0 }}>
             <div className="banner warn">

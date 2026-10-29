@@ -4,6 +4,7 @@
 // ≈90%-probability income trade.
 import { useState } from 'react'
 import { useApp } from '../data/appStore'
+import { store } from '../data/platform'
 import { INDICES, type IndexSymbol, grouped, indexInfo, inr, isMarketOpen, pct, roundTick, signed, spotChangePct } from '../engine/market'
 import { type ProResult, type ProSetup, gradeColor, gradeOf, kindColor, kindLabel } from '../engine/proStrategies'
 import { legFromChain } from '../engine/strategyEngine'
@@ -37,10 +38,15 @@ function pick(pro: ProResult | undefined, mode: Mode): { setup?: ProSetup; trade
 export function BestBoard() {
   const { chains, signals, pros, settings, go, setSelectedIndex, setBuilderIndex, setBuilderLegs, openTicket, showToast } = useApp()
   const [open, setOpen] = useState<{ index: IndexSymbol; setup: ProSetup } | undefined>()
-  const [mode, setMode] = useState<Mode>('all')
+  // Remembered, and set by Strategies → Apply.
+  const [mode, setModeRaw] = useState<Mode>(() => store.get<Mode>('board.mode', 'all'))
+  const setMode = (m: Mode) => { setModeRaw(m); store.set('board.mode', m) }
+  // Rows stay in a fixed index order: re-sorting by live strength on every refresh made rows swap places and
+  // the whole page jump on phones. The rank number shows the live standing instead.
   const rows = INDICES.map((i) => ({ i, chain: chains[i.id], sig: signals[i.id], pro: pros[i.id], ...pick(pros[i.id], mode) }))
-    .sort((a, b) => (b.tradeable ? 1 : 0) - (a.tradeable ? 1 : 0) || (b.setup ? strength(b.setup) : -1) - (a.setup ? strength(a.setup) : -1))
-  const top = rows.find((r) => r.tradeable && r.setup?.plan)
+  const ranked = [...rows].sort((a, b) => (b.tradeable ? 1 : 0) - (a.tradeable ? 1 : 0) || (b.setup ? strength(b.setup) : -1) - (a.setup ? strength(a.setup) : -1))
+  const rankOf = new Map(ranked.map((r, n) => [r.i.id, n + 1]))
+  const top = ranked.find((r) => r.tradeable && r.setup?.plan)
 
   /** Puts a setup to work: single-leg buys open the order ticket; multi-leg setups go to the basket for review. */
   const trade = (index: IndexSymbol, st: ProSetup) => {
@@ -72,7 +78,7 @@ export function BestBoard() {
       ) : (
         <div className="hero hero-wait">
           <div className="row"><span className="badge" style={{ color: 'var(--muted)', background: 'var(--card2)' }}>TOP PICK</span><b className="grow">Nothing worth trading right now</b></div>
-          <span className="small muted" style={{ lineHeight: 1.45 }}>{mode === 'all' ? 'No strategy fits well enough — the pros wait too. Tap an index to see what each strategy is waiting for.' : `No ${MODES.find((m) => m.id === mode)!.hint} fits right now. Tap an index to see what is missing.`}</span>
+          <span className="small muted" style={{ lineHeight: 1.45 }}>{mode === 'all' ? 'No setup fits well enough — waiting is the trade. Tap an index to see what is missing.' : `No ${MODES.find((m) => m.id === mode)!.hint} fits right now. Tap an index to see what is missing.`}</span>
         </div>
       )}
 
@@ -81,14 +87,14 @@ export function BestBoard() {
       </div>
 
       <div className="board">
-        {rows.map(({ i, chain, sig, setup, tradeable }, n) => {
+        {rows.map(({ i, chain, sig, setup, tradeable }) => {
           const best = tradeable && setup?.plan ? setup : undefined
           const ch = chain ? spotChangePct(chain) : 0
           const col = best ? kindColor(best.plan!.kind) : 'var(--muted)'
           const g = best ? gradeOf(best) : undefined
           return (
             <button key={i.id} className="board-row" style={{ borderLeft: `4px solid ${col}` }} onClick={() => setup && setOpen({ index: i.id, setup })}>
-              <div className="board-rank">{n + 1}</div>
+              <div className="board-rank" style={best ? { color: col } : undefined}>{rankOf.get(i.id)}</div>
               <div className="board-idx">
                 <b>{i.shortName}</b>
                 <span>{chain ? grouped(chain.spot, 0) : '—'} <span style={{ color: changeColor(ch) }}>{chain ? `${signed(ch)}%` : ''}</span></span>
@@ -106,7 +112,7 @@ export function BestBoard() {
                 ) : (
                   <>
                     <div className="row" style={{ gap: 6 }}><span className="badge" style={{ color: 'var(--muted)', background: 'var(--card)', whiteSpace: 'nowrap' }}>{setup?.plan ? 'NO EDGE' : 'WAIT'}</span><span className="small" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{setup ? setup.name : 'Loading…'}</span></div>
-                    <span className="tiny muted">{setup ? (setup.plan ? `rules fit ${setup.fit}/100, but ≈ ${inr(setup.plan.expectancy)}/trade at today's odds — skip` : `best fit ${setup.fit}/100 · window ${setup.window}`) : ''}{sig && !setup?.plan ? ` · score ${sig.score.toFixed(0)}` : ''}</span>
+                    <span className="tiny muted">{setup ? (setup.plan ? `fit ${setup.fit} · ≈ ${inr(setup.plan.expectancy)}/trade — skip` : `fit ${setup.fit} · ${setup.window}`) : ''}{sig && !setup?.plan ? ` · score ${sig.score.toFixed(0)}` : ''}</span>
                   </>
                 )}
               </div>
@@ -117,8 +123,8 @@ export function BestBoard() {
           )
         })}
       </div>
-      <span className="tiny muted" style={{ lineHeight: 1.4 }}>
-        Grades: <b style={{ color: gradeColor('A') }}>A</b> high fit and strong expectancy · <b style={{ color: gradeColor('B') }}>B</b> positive expectancy · rules distilled from what India's well-known option desks publish (Playbook → Pro desk). P(win) is measured at today's IV, not promised — “≈90% POP” is a probability of staying in range, not a 90% return. Risk 1–2% per trade.
+      <span className="tiny muted">
+        <b style={{ color: gradeColor('A') }}>A</b> strong · <b style={{ color: gradeColor('B') }}>B</b> positive edge · odds measured at today’s IV, not promised.
       </span>
       {open && <SetupSheet index={open.index} setup={open.setup} onClose={() => setOpen(undefined)} onTrade={() => { const s = open; setOpen(undefined); trade(s.index, s.setup) }} />}
     </div>

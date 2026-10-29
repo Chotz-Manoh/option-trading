@@ -8,7 +8,7 @@ import {
   findContract, isFinal, newTag, placeOrder, prepareExit,
 } from '../data/broker'
 import { openKiteBasket } from '../data/kite'
-import { hosted } from '../data/platform'
+import { hosted, platform } from '../data/platform'
 import { friendlyError } from '../data/provider'
 import { grouped, indexInfo, inr, roundTick, rowFor, shortDate } from '../engine/market'
 import { charges } from '../engine/riskEngine'
@@ -48,12 +48,14 @@ export function OrderTicket({ init, onClose }: { init: TicketInit; onClose: () =
   const contractRef = useRef<Contract | undefined>(undefined)
   const alive = useRef(true)
   useEffect(() => () => { alive.current = false }, [])
-  // Hosted web version + Kite: look the contract up early so the ticket can hand the order to Kite (static-IP rule).
+  // Web version and phones + Kite: a phone or website has no static IP, so Kite's API rejects the order. Look the
+  // contract up early and hand the order to Kite's own basket page instead (one tap to confirm there).
+  const viaBasket = broker === 'kite' && (hosted || platform === 'android')
   const [webContract, setWebContract] = useState<Contract>()
   useEffect(() => {
-    if (!(hosted && broker === 'kite')) return
+    if (!viaBasket) return
     findContract(broker, init.index, init.expiry, init.strike, init.type, init.ref).then((c) => { if (alive.current) { contractRef.current = c; setWebContract(c) } }).catch(() => undefined)
-  }, [broker, init.index, init.expiry, init.strike, init.type, init.ref])
+  }, [viaBasket, broker, init.index, init.expiry, init.strike, init.type, init.ref])
 
   const lots = qty / lot
   const wholeLots = Number.isInteger(Math.round(lots * 1000) / 1000)
@@ -193,6 +195,7 @@ export function OrderTicket({ init, onClose }: { init: TicketInit; onClose: () =
           {funds && <div className="kv small"><span>Available funds</span><span style={{ color: side === 'BUY' && value > funds.available ? 'var(--red)' : undefined }}>{inr(funds.available)}</span></div>}
           {side === 'SELL' && !init.exit && <span className="small orange">Selling options without holding them needs margin (often ₹1 lakh+ per lot) and has large risk. {brokerName(broker)} checks the margin.</span>}
           {far && <span className="small orange">Price is more than 10% away from the last traded price.</span>}
+          {!ltp && orderType !== 'MARKET' && !(price > 0) && <span className="small orange">No live price for this contract yet — type a price, or use a Market order.</span>}
           {triggerBad && <span className="small orange">{side === 'BUY' ? 'For a buy stop, the limit price must be at or above the trigger.' : 'For a sell stop, the limit price must be at or below the trigger.'}</span>}
           {stopBad && <span className="small orange">The stop-loss must be below the buy price.</span>}
           {orderType === 'MARKET' && <span className="tiny muted">Market orders are sent with the exchange's market protection, so they can't fill at a runaway price.</span>}
@@ -209,16 +212,17 @@ export function OrderTicket({ init, onClose }: { init: TicketInit; onClose: () =
             {protect && side === 'BUY' && <span className="small">Then a stop-loss sell at ₹{stop.toFixed(2)} once it fills.</span>}
           </div>
           <span className="small orange">This is a real order with real money. Once sent it can only be cancelled while it is still open.</span>
-          {hosted && broker === 'kite' && webContract && (
-            <span className="small muted" style={{ lineHeight: 1.45 }}>Web version: brokers accept API orders only from your registered static IP, and a website runs from changing addresses — so the order opens in Kite for you to confirm there (one tap). The Windows app places it directly.</span>
+          {viaBasket && webContract && (
+            <span className="small muted" style={{ lineHeight: 1.45 }}>Kite accepts API orders only from a registered static IP, which a phone or website does not have — so the order opens in Kite for one-tap confirmation.</span>
           )}
+          {viaBasket && !webContract && <span className="small muted">Looking up the contract on Kite…</span>}
           <div className="row">
             <button className="btn grow" onClick={() => setPhase('edit')}>Back</button>
-            {hosted && broker === 'kite' && webContract
+            {viaBasket && webContract
               ? <button className="btn primary grow" style={{ background: sideColor }} onClick={viaKite}><Icon name="external" size={18} />Open in Kite to confirm</button>
               : <button className="btn primary grow" style={{ background: sideColor }} onClick={() => void place()}>Confirm &amp; place</button>}
           </div>
-          {hosted && broker === 'kite' && webContract && <button className="btn link" style={{ alignSelf: 'center', fontSize: 13 }} onClick={() => void place()}>Try the API anyway (works only from a whitelisted IP)</button>}
+          {viaBasket && webContract && <button className="btn link" style={{ alignSelf: 'center', fontSize: 13 }} onClick={() => void place()}>Try the API anyway (needs a whitelisted IP)</button>}
         </>
       ) : phase === 'placing' ? (
         <div className="muted" style={{ padding: 20, textAlign: 'center' }}>Sending to {brokerName(broker)}…</div>

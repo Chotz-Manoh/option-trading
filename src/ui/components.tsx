@@ -176,16 +176,21 @@ export function DataNotice() {
   const upstoxRelogin = settings.dataSource === 'upstox' && (!settings.upstoxToken || upstoxTokenExpired()) && !!upstoxCreds().apiKey
   const isKiteNoKey = settings.dataSource === 'kite' && lastError && /API key|api key/i.test(lastError)
   const isKiteExpired = settings.dataSource === 'kite' && lastError && /session expired|not logged in/i.test(lastError)
+  // Kite's free Personal plan has no market data: the quote calls come back "Insufficient permission".
+  const isKiteNoPlan = settings.dataSource === 'kite' && lastError && /insufficient permission|data plan/i.test(lastError)
   if (!lastError && !upstoxRelogin) return null
-  const kiteMsg = isKiteNoKey ? 'Add your Kite Connect API key and secret to get live market data.' : isKiteExpired ? 'Kite session ended (resets at 6 AM daily). Log in again to resume live prices.' : lastError
-  const kiteBtn = isKiteExpired ? 'Log in' : isKiteNoKey ? 'Set up' : 'Fix in Settings'
+  const kiteMsg = isKiteNoKey ? 'Add your Kite Connect API key and secret to get live market data.'
+    : isKiteExpired ? 'Kite session ended (resets at 6 AM daily). Log in again to resume live prices.'
+      : isKiteNoPlan ? 'Kite’s free plan has no live prices. Switch data to Upstox (free) — orders can stay on Kite.'
+        : lastError?.replace(/^[^:]+: /, '')
+  const kiteBtn = isKiteExpired ? 'Log in' : isKiteNoKey ? 'Set up' : isKiteNoPlan ? 'Use Upstox' : 'Fix'
   return (
     <div className="banner warn" role="alert">
       <Icon name="key" color="var(--orange)" size={18} />
       <span className="grow small">{upstoxRelogin ? 'Upstox session ended (resets at 3:30 AM daily). Log in again for live prices.' : kiteMsg}</span>
       {upstoxRelogin
         ? <button className="btn primary" style={{ padding: '6px 12px', whiteSpace: 'nowrap' }} onClick={() => { try { startUpstoxLogin() } catch { go('settings') } }}>Log in</button>
-        : <button className="btn primary" style={{ padding: '6px 12px', whiteSpace: 'nowrap' }} onClick={() => go('settings')}>{kiteBtn}</button>}
+        : <button className="btn primary" style={{ padding: '6px 12px', whiteSpace: 'nowrap' }} onClick={() => { if (isKiteNoPlan) useApp.getState().setSettings({ dataSource: 'upstox' }); go('settings') }}>{kiteBtn}</button>}
     </div>
   )
 }
