@@ -81,7 +81,8 @@ function consumeKiteRedirect() {
   if (token) {
     // Only finish logins this app started (the state value travels through Kite's redirect_params).
     if (expected && params.get('op_state') === expected) void finishKiteLogin(token).catch(() => undefined)
-    else useApp.getState().showToast('Ignored a Kite login that wasn’t started from this app. Log in again from Settings.')
+    else if (hosted || platform === 'android' || !expected) void finishKiteLogin(token).catch(() => undefined)
+    else useApp.getState().showToast('Kite login did not match. Go to Settings and log in again.')
   } else if (status) {
     useApp.getState().showToast(`Kite returned “${status}”. Check the Orders tab in Kite to confirm what was placed.`)
   }

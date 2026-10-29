@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useApp } from '../../data/appStore'
 import { extractRequestToken, kiteCompleteLogin, kiteCreds, kiteLoginURL, kiteLogout, kiteSessionExpiry, saveKiteCreds } from '../../data/kite'
-import { callbackBase, copyText, desktopCall, platform, store } from '../../data/platform'
+import { callbackBase, copyText, desktopCall, hosted, platform, store } from '../../data/platform'
 import { friendlyError } from '../../data/provider'
 import { Icon } from '../components'
 
@@ -121,12 +121,12 @@ export function KiteAccount({ compact = false }: { compact?: boolean }) {
           <input id="kite-secret" type="password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} autoComplete="off" style={{ width: 200 }} /></div>
       </div>
       <button className="btn primary" disabled={!apiKey.trim() || !apiSecret.trim()}
-        onClick={() => { save(); try { startKiteLogin(); setMsg(platform === 'desktop' ? 'Log in inside the Kite window — OptionPulse connects automatically when you finish.' : platform === 'remote' ? PASTE_HINT : undefined) } catch (e) { setMsg(friendlyError(e)) } }}>
+        onClick={() => { save(); try { startKiteLogin(); setMsg(platform === 'desktop' ? 'Log in inside the Kite window — OptionPulse connects automatically when you finish.' : platform === 'remote' ? PASTE_HINT : hosted ? 'You will be redirected back here after logging in.' : undefined) } catch (e) { setMsg(friendlyError(e)) } }}>
         <Icon name="key" size={18} />Save &amp; log in with Kite
       </button>
       {msg && <span className="small green">{msg}</span>}
       {platform === 'remote' && <span className="small muted" style={{ lineHeight: 1.45 }}>Easier: log in on your Windows PC — this phone picks the login up by itself within a few seconds.</span>}
-      <details open={platform === 'remote'}>
+      <details open={platform === 'remote' || hosted}>
         <summary className="small" style={{ cursor: 'pointer', color: 'var(--blue)' }}>Login didn't come back? Paste the address instead</summary>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
           <span className="tiny muted">After logging in, Kite sends you to {KITE_REDIRECT}?request_token=… — copy that whole address (or just the token) and paste it here.</span>
