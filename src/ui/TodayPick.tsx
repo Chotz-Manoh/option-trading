@@ -84,14 +84,14 @@ export function TodayPick() {
 function WhySheet({ pick, onClose, onTrade, onIndex }: { pick: Pick; onClose: () => void; onTrade?: () => void; onIndex: () => void }) {
   return (
     <Sheet title={`${indexInfo(pick.index).displayName} · ${pick.status === 'TRADE' ? 'why this trade' : 'why wait'}`} onClose={onClose}>
-      <div className="row"><span className="small muted grow">Rules agreeing</span><b>{pick.score}/100</b><span className="tiny muted">need {TRADE_SCORE}</span></div>
+      <div className="row"><span className="small muted grow">Evidence-weighted score</span><b>{pick.score}/100</b><span className="tiny muted">need {TRADE_SCORE}</span></div>
       <div className="scorebar"><div className="fill" style={{ left: 0, width: `${pick.score}%`, background: pick.score >= TRADE_SCORE ? 'var(--green)' : 'var(--orange)' }} /></div>
       {pick.checks.map((c) => (
         <div key={c.name} className="row small" style={{ alignItems: 'flex-start' }}>
           <Icon name={c.pass ? 'check' : 'x'} size={16} stroke={2.6} color={c.pass ? 'var(--green)' : 'var(--red)'} />
-          <span style={{ width: 110, flexShrink: 0, fontWeight: 600 }}>{c.name}</span>
+          <span style={{ width: 118, flexShrink: 0, fontWeight: 600 }}>{c.name}{c.weak && <span className="badge ev ev-none" style={{ marginLeft: 4 }}>weak</span>}</span>
           <span className="grow muted" style={{ lineHeight: 1.4 }}>{c.detail}</span>
-          <span className="tiny muted">{c.weight}</span>
+          <span className="tiny muted" style={{ whiteSpace: 'nowrap' }}>{c.earned ?? (c.pass ? c.weight : 0)}/{c.weight}</span>
         </div>
       ))}
       {!pick.checks.length && <span className="small muted">{pick.why.join(' ')}</span>}
