@@ -54,7 +54,7 @@ export function SettingsScreen() {
         </Section>
       )}
 
-      <Section label="Live market data (NSE & BSE)" note={platform === 'desktop' ? 'Keys and tokens stay on your own devices: this PC and the phones you pair with it below.' : platform === 'remote' ? 'Keys and tokens are shared with your Windows PC and stay on your own devices.' : 'Keys and tokens are stored on this device only.'}>
+      <Section label="Live market data" note="Keys stay on your device.">
         <div className="form">
           <div className="form-row"><label>Data source</label>
             <select value={settings.dataSource} onChange={(e) => setSettings({ dataSource: e.target.value as DataSource })}>
@@ -83,7 +83,7 @@ export function SettingsScreen() {
               <div className="form-row"><label htmlFor="dh-tok">Dhan access token</label><input id="dh-tok" type="password" value={dhanToken} onChange={(e) => setDhanToken(e.target.value)} autoComplete="off" style={{ width: 200 }} /></div>
             </div>
             <button className="btn primary" onClick={() => { setSettings({ dhanToken: dhanToken.trim(), dhanClientId: dhanId.trim() }); setMsg('Saved. Loading Dhan data… (1 option-chain request every 3 s, so all 5 indices take ~15 s)') }}>Save &amp; connect</button>
-            <div className="section-note">Generate a token on web.dhan.co → My Profile → DhanHQ Trading APIs. Valid for 24 hours. Market-data APIs may need an active data subscription.</div>
+            <div className="section-note">Token from web.dhan.co → DhanHQ APIs (valid 24 h).</div>
           </>
         )}
         {settings.dataSource === 'kite' && (
@@ -93,10 +93,9 @@ export function SettingsScreen() {
           </div>
         )}
         {msg && <div className="section-note green">{msg}</div>}
-        <div className="section-note">Real-time exchange prices reach apps through brokers licensed by NSE and BSE, so OptionPulse reads them from your broker's API. NSE's website terms don't allow apps to collect data from it automatically, so the app doesn't scrape nseindia.com or bseindia.com.</div>
-      </Section>
+              </Section>
 
-      <Section label="Trading account (orders, positions, funds)" note={<>Orders are sent only after you confirm them in the order ticket. Since 1 April 2026 brokers accept API orders only from the <b>static IP</b> registered for your API app (SEBI rule) — on a phone or home connection without a static IP, use “Place in Kite instead”, which opens Kite to confirm the order there.{hosted ? <> <b>Web version:</b> the site runs from changing addresses, so Kite orders open in Kite for one-tap confirmation and Upstox API orders are not possible here; positions, funds and all analysis work normally.</> : null}</>}>
+      <Section label="Trading account" note="Orders go out only after you confirm. On a phone, Kite orders open in Kite to confirm (no static IP).">
         <div className="form">
           <div className="form-row"><label>Place orders with</label>
             <Seg<BrokerId> options={BROKERS.map((b) => ({ id: b.id, label: b.label }))} value={settings.broker} onChange={(b) => setSettings({ broker: b })} /></div>
@@ -106,20 +105,16 @@ export function SettingsScreen() {
 
       <Section label="Zerodha Kite" note={kiteLoggedIn ? <KiteSetupNote /> : undefined}>
         <div className="card"><KiteAccount /></div>
-        <div className="section-note">Kite's free Personal API plan is enough for orders, positions and funds. Live prices from Kite need the ₹500/month Connect plan — or use Upstox's free API for prices and Kite for orders.</div>
+        <div className="section-note">Free Kite plan: orders and positions only. Live prices need Kite’s data plan — or use Upstox (free).</div>
       </Section>
 
       {platform === 'desktop' && (
-        <Section label="iPhone & other phones" note="The phone shows the same app from this PC over Wi‑Fi. Live Auto Trade keeps running in this PC window; the phone shows the same positions and orders and can trade by hand.">
+        <Section label="iPhone & other phones" note="Same app on your phone over Wi-Fi.">
           <PhoneAccessCard />
         </Section>
       )}
 
-      <Section label="Updates" note={platform === 'android'
-        ? 'Android asks you to confirm each install. Updates install over the old version and keep your settings, because every release is signed with the same key.'
-        : platform === 'desktop' ? 'Windows updates download, replace the app and restart it automatically — your settings and journal are kept.'
-          : platform === 'remote' ? 'This phone runs the copy installed on your Windows PC. Update there (one click) and the phone has the new version the next time it opens.'
-            : hosted ? 'Hosted web version: every deploy goes live for every device at once — nothing to install or update. Keys, tokens and your journal stay in this browser.' : undefined}>
+      <Section label="Updates" note={hosted ? "Web version updates by itself." : "Updates keep your settings."}>
         <div className="form">
           <div className="form-row"><label>Version</label><span className="muted">{APP_VERSION} · {platformName}</span></div>
           {desktopInfo?.installDir && <div className="form-row"><label>Installed in</label><span className="muted small" style={{ textAlign: 'right' }}>{desktopInfo.installDir}</span></div>}
@@ -140,7 +135,7 @@ export function SettingsScreen() {
         {!updateRepo && <div className="section-note">This copy was built on its own, so it has no update source. Publish the project with the GitHub workflow (see README) and install OptionPulse from your Releases once — from then on every new version installs in one click.</div>}
       </Section>
 
-      <Section label="Refresh" note="Live sources refresh only during market hours (9:15–15:30 IST, Mon–Fri).">
+      <Section label="Refresh" note="Live sources refresh in market hours only.">
         <div className="form">
           <div className="form-row"><label>Auto-refresh</label><Toggle on={settings.autoRefresh} onChange={(v) => setSettings({ autoRefresh: v })} label="Auto-refresh" /></div>
           <NumField label="Every (seconds)" value={settings.refreshSeconds} digits={0} min={10} max={300} onChange={(v) => setSettings({ refreshSeconds: v })} id="rf-sec" />
@@ -148,14 +143,14 @@ export function SettingsScreen() {
         </div>
       </Section>
 
-      <Section label="Pricing model" note="Used for Black-Scholes Greeks, IV and probabilities. Roughly the 91-day T-bill yield.">
+      <Section label="Pricing model" note="Rate used for Greeks and odds.">
         <div className="form">
           <NumField label="Risk-free rate %" value={ratePct} min={0} max={20} onChange={setRatePct} id="rate" />
         </div>
         <button className="btn" style={{ alignSelf: 'flex-start' }} onClick={() => setSettings({ riskFreeRate: Math.max(0, ratePct) / 100 })}>Apply rate</button>
       </Section>
 
-      <Section label="Lot sizes" note="Defaults are the NSE/BSE sizes effective January 2026 (Nifty 65, Bank Nifty 30, Fin Nifty 60, Midcap Nifty 120, Sensex 20). Exchanges revise these periodically — update here if they change.">
+      <Section label="Lot sizes" note="NSE/BSE sizes from Jan 2026. Change only if your broker differs.">
         <div className="form">
           {INDICES.map((i) => (
             <NumField key={i.id} label={i.displayName} value={lotSize(i.id)} digits={0} min={1} max={10000} id={`lot-${i.id}`}
@@ -184,7 +179,7 @@ export function SettingsScreen() {
         <button className="btn" style={{ alignSelf: 'flex-start' }} onClick={() => setSettings({ charges: DEFAULT_CHARGES })}>Reset charges</button>
       </Section>
 
-      <Section label="Master setup" note="Event days (Budget, RBI/Fed policy, major results, elections): the app says NO TRADE and Auto Trade stays out. NSE/BSE holidays for 2026 are built in; add later ones under Extra market holidays until an update includes them. Quality is the weighted share of the professional checklist that passes; desks take only A/B-grade (≥ 60) setups.">
+      <Section label="Master setup" note="Event days = no new trades. Holidays for 2026 are built in.">
         <div className="form">
           <div className="form-row"><label htmlFor="ev-days">Event days (yyyy-mm-dd, comma-separated)</label>
             <input id="ev-days" type="text" value={settings.eventDays} placeholder="2026-12-05, 2027-02-01" onChange={(e) => setSettings({ eventDays: e.target.value })} style={{ width: 220 }} /></div>

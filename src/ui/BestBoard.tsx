@@ -46,7 +46,6 @@ export function BestBoard() {
   const rows = INDICES.map((i) => ({ i, chain: chains[i.id], sig: signals[i.id], pro: pros[i.id], ...pick(pros[i.id], mode) }))
   const ranked = [...rows].sort((a, b) => (b.tradeable ? 1 : 0) - (a.tradeable ? 1 : 0) || (b.setup ? strength(b.setup) : -1) - (a.setup ? strength(a.setup) : -1))
   const rankOf = new Map(ranked.map((r, n) => [r.i.id, n + 1]))
-  const top = ranked.find((r) => r.tradeable && r.setup?.plan)
 
   /** Puts a setup to work: single-leg buys open the order ticket; multi-leg setups go to the basket for review. */
   const trade = (index: IndexSymbol, st: ProSetup) => {
@@ -68,19 +67,9 @@ export function BestBoard() {
     <div className="card board-card" style={{ gap: 10 }}>
       <div className="row">
         <Icon name="trophy" color="var(--green)" />
-        <b className="grow" style={{ fontSize: 16 }}>Best right now</b>
-        <span className="tiny muted">{isMarketOpen() ? 'ranked live · pro-desk rules' : 'market closed · last session'}</span>
+        <b className="grow" style={{ fontSize: 16 }}>Per index</b>
+        <span className="tiny muted">{isMarketOpen() ? 'live' : 'last session'}</span>
       </div>
-
-      {/* Top pick: the single clearest answer across all five indices */}
-      {top && top.setup?.plan ? (
-        <TopPick index={top.i.id} setup={top.setup} onWhy={() => setOpen({ index: top.i.id, setup: top.setup! })} onTrade={() => trade(top.i.id, top.setup!)} />
-      ) : (
-        <div className="hero hero-wait">
-          <div className="row"><span className="badge" style={{ color: 'var(--muted)', background: 'var(--card2)' }}>TOP PICK</span><b className="grow">Nothing worth trading right now</b></div>
-          <span className="small muted" style={{ lineHeight: 1.45 }}>{mode === 'all' ? 'No setup fits well enough — waiting is the trade. Tap an index to see what is missing.' : `No ${MODES.find((m) => m.id === mode)!.hint} fits right now. Tap an index to see what is missing.`}</span>
-        </div>
-      )}
 
       <div className="chip-row" role="tablist" aria-label="Board view">
         {MODES.map((m) => <button key={m.id} role="tab" aria-selected={mode === m.id} className={`chip small ${mode === m.id ? 'active' : ''}`} onClick={() => setMode(m.id)}>{m.label}</button>)}
@@ -123,45 +112,10 @@ export function BestBoard() {
           )
         })}
       </div>
-      <span className="tiny muted">
+      <span className="tiny muted hint">
         <b style={{ color: gradeColor('A') }}>A</b> strong · <b style={{ color: gradeColor('B') }}>B</b> positive edge · odds measured at today’s IV, not promised.
       </span>
       {open && <SetupSheet index={open.index} setup={open.setup} onClose={() => setOpen(undefined)} onTrade={() => { const s = open; setOpen(undefined); trade(s.index, s.setup) }} />}
-    </div>
-  )
-}
-
-/** Hero card: the one trade the board rates highest right now, in plain words. */
-function TopPick({ index, setup: st, onWhy, onTrade }: { index: IndexSymbol; setup: ProSetup; onWhy: () => void; onTrade: () => void }) {
-  const p = st.plan!
-  const col = kindColor(p.kind)
-  const g = gradeOf(st)
-  const buy = p.kind.startsWith('BUY') && p.kind !== 'BUY STRADDLE'
-  const legs = p.legs.map((l) => `${l.action === 'Sell' ? 'Sell' : 'Buy'} ${grouped(l.strike)} ${l.type}`).join(' · ')
-  return (
-    <div className="hero" style={{ ['--hero' as string]: col }}>
-      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-        <span className="badge" style={{ color: '#000', background: col, fontWeight: 800 }}>TOP PICK</span>
-        {g && <span className="grade" style={{ background: gradeColor(g) }}>Grade {g}</span>}
-        <span className="small muted">{indexInfo(index).displayName} · {st.name}</span>
-      </div>
-      <div className="hero-title">
-        <span style={{ color: col }}>{kindLabel(p.kind)}</span> {buy ? `${grouped(p.legs[0].strike)} ${p.legs[0].type}` : ''}
-        {!buy && <span className="hero-legs">{legs}</span>}
-      </div>
-      <div className="hero-stats">
-        <div><span className="label">{buy ? 'Entry' : 'Credit'}</span><b>₹{p.premium.toFixed(2)}</b></div>
-        <div><span className="label">{buy ? 'Stop' : 'Stop (buy back)'}</span><b style={{ color: 'var(--red)' }}>₹{p.stop.toFixed(2)}</b></div>
-        <div><span className="label">{buy ? 'Target' : 'Book at'}</span><b style={{ color: 'var(--green)' }}>₹{p.target.toFixed(2)}</b></div>
-        <div><span className="label">P(win)</span><b style={{ color: p.pWin >= 0.5 ? 'var(--green)' : 'var(--text)' }}>{pct(p.pWin, 0)}</b></div>
-        <div><span className="label">Per trade</span><b style={{ color: p.expectancy > 0 ? 'var(--green)' : 'var(--red)' }}>{inr(p.expectancy)}</b></div>
-        <div><span className="label">Size</span><b>{p.lots} lot{p.lots === 1 ? '' : 's'}</b></div>
-      </div>
-      <div className="row">
-        <button className="btn primary grow" style={{ background: col }} onClick={onTrade}><Icon name="send" size={18} />{p.legs.length === 1 ? 'Trade — open order ticket' : `Load ${p.legs.length} legs into the basket`}</button>
-        <button className="btn" onClick={onWhy}>Why?</button>
-      </div>
-      <span className="tiny muted">Exit by {p.exitAt} · risk {inr(p.riskRupees)} · Monte Carlo at today's IV</span>
     </div>
   )
 }

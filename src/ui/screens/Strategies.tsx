@@ -60,12 +60,7 @@ export function StrategiesScreen() {
       })}
       {!list.length && <div className="card"><span className="muted">No rule matches “{q}”.</span></div>}
 
-      <details className="help">
-        <summary>What is not here</summary>
-        <div className="small muted" style={{ lineHeight: 1.5 }}>
-          <p>Insider tips, spoofing, pump-and-dump groups and “guaranteed” calls are SEBI offences that get accounts frozen. No trader wins 95%; the edge is small and comes from discipline. Claims quoted here are the authors’ own and are marked as such.</p>
-        </div>
-      </details>
+      <span className="tiny muted" style={{ textAlign: 'center' }}>Legal rules only. Claims are the authors’ own. Nobody wins 95%.</span>
     </div>
   )
 }
@@ -85,13 +80,16 @@ function RuleCard({ rule: r, onApply }: { rule: Rule; onApply: () => void }) {
         <Icon name={open ? 'down' : 'chev'} size={14} color="var(--muted)" />
       </button>
       <div className="rule-body">
-        <div className="kv small"><span>Entry</span><span style={{ textAlign: 'right' }}>{r.entry}</span></div>
-        <div className="kv small"><span>Exit</span><span style={{ textAlign: 'right', color: 'var(--green)' }}>{r.exit}</span></div>
-        {r.stop && <div className="kv small"><span>Stop</span><span style={{ textAlign: 'right', color: 'var(--red)' }}>{r.stop}</span></div>}
+        {open && <div className="kv small"><span>Entry</span><span>{r.entry}</span></div>}
+        {open && <div className="kv small"><span>Exit</span><span style={{ color: 'var(--green)' }}>{r.exit}</span></div>}
+        {open && r.stop && <div className="kv small"><span>Stop</span><span style={{ color: 'var(--red)' }}>{r.stop}</span></div>}
         {open && r.notes && r.notes.map((n, i) => <div key={i} className="row small" style={{ alignItems: 'flex-start' }}><Icon name="chev" size={10} color="var(--muted)" /><span className="grow muted" style={{ lineHeight: 1.45 }}>{n}</span></div>)}
         {open && r.claim && <span className="tiny orange" style={{ lineHeight: 1.4 }}>Claimed: {r.claim}</span>}
         {open && r.source && <button className="btn link" style={{ padding: 0, fontSize: 12, alignSelf: 'flex-start' }} onClick={() => openExternal(r.source!.url)}>Source: {r.source.label}</button>}
-        {r.apply && <button className="btn primary" style={{ minHeight: 40, alignSelf: 'flex-start', padding: '0 14px' }} onClick={onApply}><Icon name="play" size={14} />{r.apply.label}</button>}
+        <div className="row">
+          <button className="btn" style={{ minHeight: 36, padding: '0 12px', fontSize: 13 }} onClick={() => setOpen(!open)}>{open ? 'Less' : 'Rules'}</button>
+          {r.apply && <button className="btn primary" style={{ minHeight: 36, padding: '0 12px', fontSize: 13 }} onClick={onApply}><Icon name="play" size={14} />{r.apply.label}</button>}
+        </div>
       </div>
     </div>
   )

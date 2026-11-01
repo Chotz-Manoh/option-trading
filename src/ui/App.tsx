@@ -342,18 +342,14 @@ function Welcome({ onAccept }: { onAccept: () => void }) {
   return (
     <Sheet title="Welcome to OptionPulse" onClose={() => undefined} closeLabel=" ">
       <div className="article" style={{ lineHeight: 1.5 }}>
-        <p>A live trading app for <b>Nifty, Bank Nifty, Fin Nifty, Midcap Nifty and Sensex</b> options: real-time NSE &amp; BSE prices, option chain with OI and Greeks, signals that explain themselves, and one-tap orders through your broker.</p>
-        {platform === 'remote' && <p><b>This phone is paired with OptionPulse on your Windows PC.</b> Logins and settings are shared: connect your accounts on the PC (or here) and both screens are in. Prices and orders travel through the PC.</p>}
+        <p>Live Nifty, Bank Nifty, Fin Nifty, Midcap and Sensex options: prices, chain, signals and one-tap orders through your broker.</p>
         <ol>
-          <li><b>Connect live market data</b> — Upstox (free API) or Zerodha Kite (₹500/month data plan).</li>
-          <li><b>Connect your trading account</b> — Zerodha Kite or Upstox — to place orders, see positions and funds. Brokers accept app orders only from your registered <b>static IP</b> (SEBI rule since April 2026).</li>
+          <li><b>Live data</b> — Upstox (free) or Kite (paid data plan).</li>
+          <li><b>Trading account</b> — Kite or Upstox for orders, positions and funds.</li>
         </ol>
-        <ul>
-          <li><b>Every order is real money</b> and is sent only after you confirm it.</li>
-          <li><b>No formula wins every time.</b> SEBI found 91% of individual F&amp;O traders lost money in FY25. Signals are probabilities, not promises. Risk 1–2% of capital per trade, always with a stop-loss.</li>
-        </ul>
+        <p className="small muted">Every order is real money and is sent only after you confirm. SEBI: 91% of F&amp;O traders lost money in FY25 — signals are odds, not promises. Risk 1–2% per trade.</p>
       </div>
-      <button className="btn primary" onClick={() => { onAccept(); useApp.getState().go('settings') }}>I understand — connect my accounts</button>
+      <button className="btn primary" onClick={() => { onAccept(); useApp.getState().go('settings') }}>Connect my accounts</button>
       <button className="btn" onClick={onAccept}>Not now</button>
     </Sheet>
   )

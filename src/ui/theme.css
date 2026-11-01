@@ -336,3 +336,14 @@ details.help p { margin: 8px 0 0; }
   .quick-item { padding: 10px 4px; font-size: 11px; gap: 4px; }
   .top5-btn b { font-size: 15px; }
 }
+
+/* ---- Today's Pick ---- */
+.hero.pick { gap: 8px; }
+.hero.pick .hero-title { font-size: 26px; }
+.hero.pick .hero-legs { font-size: 13px; color: var(--muted); font-weight: 500; }
+/* Strategies: left-aligned values read better on a phone */
+.rule-body .kv { justify-content: flex-start; gap: 10px; }
+.rule-body .kv > span:first-child { width: 42px; flex-shrink: 0; }
+.rule-body .kv > span:last-child { text-align: left !important; max-width: none; }
+/* helper lines hidden on phones (minimal mode) */
+@media (max-width: 600px) { .hint { display: none; } }

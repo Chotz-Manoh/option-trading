@@ -10,6 +10,7 @@ import { legFromChain } from '../../engine/strategyEngine'
 import { CandleChart } from '../charts'
 import { BiasBadge, Card, DataNotice, Icon, Loading, Tile, changeColor, useWide } from '../components'
 import { BestBoard } from '../BestBoard'
+import { TodayPick } from '../TodayPick'
 import { brokerName, brokerNotReady, positionContract } from '../../data/broker'
 import { platform, store } from '../../data/platform'
 
@@ -77,13 +78,14 @@ export function DeskScreen() {
         {settings.dataSource === 'demo' || settings.dataSource === 'none'
           ? <span className="badge" style={{ color: 'var(--orange)', background: 'color-mix(in srgb, var(--orange) 16%, transparent)', fontWeight: 700 }}>{settings.dataSource === 'demo' ? 'SIMULATED' : 'NOT CONNECTED'}</span>
           : <span className="badge live-pill" style={{ color: isMarketOpen() ? 'var(--green)' : 'var(--muted)', background: 'var(--card)' }}>{isMarketOpen() && <span className="live-dot" />}{isMarketOpen() ? 'LIVE · market open' : `Market closed${closedReason() ? ` · ${closedReason()}` : ''}`}</span>}
-        <span className="muted">{settings.dataSource === 'demo' || settings.dataSource === 'none' ? (isMarketOpen() ? 'Market open' : `Market closed${closedReason() ? ` · ${closedReason()}` : ''}`) : { kite: 'Zerodha Kite', upstox: 'Upstox', dhan: 'Dhan' }[settings.dataSource]}</span>
+        <span className="muted hint">{settings.dataSource === 'demo' || settings.dataSource === 'none' ? '' : { kite: 'Kite', upstox: 'Upstox', dhan: 'Dhan' }[settings.dataSource]}</span>
         <span className="grow" />
         {lastUpdated && <span className="muted">{timeString(lastUpdated)}</span>}
         <button className="icon-btn" aria-label="Refresh" disabled={loading} onClick={() => void refreshAll()}><Icon name="refresh" size={20} /></button>
       </div>
 
       {settings.dataSource === 'none' && <Loading />}
+      {settings.dataSource !== 'none' && <TodayPick />}
       {settings.dataSource !== 'none' && (
         <button className="btn primary top5-btn" onClick={() => go('top5')}>
           <Icon name="trophy" size={20} />
@@ -127,7 +129,7 @@ export function DeskScreen() {
             </button>
           )}
           <div className="row">
-            <span className="small muted grow">{tf === '5m' ? 'Today, 5-minute · VWAP · OI walls · opening range' : 'Daily · EMA 20/50'}</span>
+            <span className="small muted grow">{tf === '5m' ? 'Today · 5-min' : 'Daily'}</span>
             <div className="seg"><button className={tf === '5m' ? 'on' : ''} onClick={() => setTf('5m')}>5m</button><button className={tf === 'daily' ? 'on' : ''} onClick={() => setTf('daily')}>Daily</button></div>
             <button className="btn link" onClick={() => go('chart')}>Full chart</button>
           </div>
@@ -201,7 +203,7 @@ export function DeskScreen() {
         </Card>
 
         {/* Quick access */}
-        <Card title="Everything" icon="grid">
+        <Card>
           <div className="quick">
             {QUICK.map((q) => <button key={q.id} className="quick-item" onClick={() => go(q.id)}><Icon name={q.icon} size={22} color="var(--green)" /><span>{q.label}</span></button>)}
             <button className="quick-item" onClick={() => go('strategies')}><Icon name="bulb" size={22} color="var(--green)" /><span>Strategies</span></button>
@@ -239,7 +241,7 @@ function Spark({ candles, color }: { candles?: { close: number }[]; color: strin
 
 /** ATM call/put premium through the session (sampled on every refresh). */
 function PremiumSparkline({ data }: { data: { time: number; strike: number; ce: number; pe: number }[] }) {
-  if (data.length < 3) return <span className="tiny muted">ATM premium tracker starts after a few refreshes.</span>
+  if (data.length < 3) return null
   const W = 600, H = 70
   const all = data.flatMap((d) => [d.ce, d.pe])
   const lo = Math.min(...all), hi = Math.max(...all)
