@@ -20,6 +20,8 @@ export interface Rule {
   /** The author's own win-rate or return claim, if any (unverified). */
   claim?: string
   source?: { label: string; url: string }
+  /** Strength of what is published: a counted backtest, an academic/regulator study, the author's claim, or nothing. */
+  evidence?: 'backtest' | 'study' | 'claim' | 'none'
   /** One tap puts the rule to work in the app. */
   apply?: { label: string; section: Section; top5?: { horizon?: 5 | 10 | 30; winRate?: WinRate }; board?: 'all' | 'buy' | 'sell' | 'pop90'; settings?: Partial<Settings> }
 }
@@ -41,17 +43,17 @@ const BOARD_SELL: Rule['apply'] = { label: 'Show selling setups', section: 'desk
 export const RULES: Rule[] = [
   // ---------- Scalps ----------
   {
-    id: 'orb15', group: 'scalp', name: '15-minute opening range breakout', when: '9:30–10:30', index: 'Nifty · Bank Nifty',
+    id: 'orb15', evidence: 'backtest', group: 'scalp', name: '15-minute opening range breakout', when: '9:30–10:30', index: 'Nifty · Bank Nifty',
     entry: 'Mark 9:15–9:30 high/low. Buy ATM CE on a 5-min CLOSE above the high, ATM PE below the low.',
-    exit: 'Target 1× the range, then 1.5×. No new entries after 10:30.',
+    exit: 'Target 2× the stop (2R). Time exit 14:30. No new entries after 10:30.',
     stop: 'Opposite edge of the range on spot (≈30–50% of premium).',
-    notes: ['Skip if the range is wider than 150 pts (BN) or 0.5% of spot — the stop is too far.', 'Skip gap days through a key level and scheduled-news days.'],
-    claim: '~55% win rate on non-event days (BankNiftyOptions).',
+    notes: ['Skip if the range is under 40 Nifty pts (noise) or over 0.5% of spot (stop too far).', 'Skip when the open gap is over 0.8% — ORB fails on gap days.', 'Short breaks made ~75% of the profit in the backtest; most exits were the 14:30 time stop.'],
+    claim: 'Intraday Lab backtest 2017–2026, 2,122 trades: 48.7% win, profit factor 1.23, max drawdown 11% before costs — with the range ≥40 pts and gap ≤0.8% filters. Zerodha’s option-premium version: 48% win, ~45% drawdown.',
     source: { label: 'Onetradejournal — 15-min ORB', url: 'https://onetradejournal.com/strategies/fifteen-minute-orb-strategy' },
     apply: BOARD_BUY,
   },
   {
-    id: 'first5', group: 'scalp', name: 'First 5-minute candle breakout', when: '9:20–10:00', index: 'Bank Nifty',
+    id: 'first5', evidence: 'none', group: 'scalp', name: 'First 5-minute candle breakout', when: '9:20–10:00', index: 'Bank Nifty',
     entry: 'Wait for the 9:15–9:20 candle to close. Next 5-min close above its high → ATM CE; below its low → ATM PE. Only on the VWAP side.',
     exit: '50–80% premium gain or 1:2. Max 2 trades.',
     stop: '30% of premium, or the other side of the candle.',
@@ -59,7 +61,7 @@ export const RULES: Rule[] = [
     apply: TOP5_10,
   },
   {
-    id: 'vwap-reclaim', group: 'scalp', name: 'VWAP reclaim (trend pullback)', who: 'Sahi', when: '9:50–11:30 · 1:30–2:45',
+    id: 'vwap-reclaim', evidence: 'none', group: 'scalp', name: 'VWAP reclaim (trend pullback)', who: 'Sahi', when: '9:50–11:30 · 1:30–2:45',
     entry: 'Index above VWAP for 45+ min, dips below for 1–3 candles, then a 5-min candle closes fully above VWAP on higher volume (RSI-9 40–58 at the dip). Buy CE on that close.',
     exit: '2× the stop distance, then stop to breakeven and trail to 1:3.',
     stop: 'Below the deepest dip candle. Skip if that is more than 0.5% away.',
@@ -67,7 +69,7 @@ export const RULES: Rule[] = [
     apply: TOP5_30,
   },
   {
-    id: 'vwap-reject', group: 'scalp', name: 'VWAP rejection (bearish fade)', who: 'Sahi', when: '9:50–11:30 · 1:30–2:45',
+    id: 'vwap-reject', evidence: 'none', group: 'scalp', name: 'VWAP rejection (bearish fade)', who: 'Sahi', when: '9:50–11:30 · 1:30–2:45',
     entry: 'Price below VWAP rallies to test it and a 5-min candle closes back below (RSI-9 45–65). Buy PE on that close. Clearly bearish sessions only.',
     exit: '2× stop distance, then trail.',
     stop: 'Above the rejection wick. Skip if the wick is more than 0.3% above entry.',
@@ -75,7 +77,7 @@ export const RULES: Rule[] = [
     apply: TOP5_30,
   },
   {
-    id: 'vwap-squeeze', group: 'scalp', name: 'VWAP squeeze breakout (lunch chop)', who: 'Sahi', when: '11:30–1:30',
+    id: 'vwap-squeeze', evidence: 'none', group: 'scalp', name: 'VWAP squeeze breakout (lunch chop)', who: 'Sahi', when: '11:30–1:30',
     entry: '4+ five-minute closes within 0.15% of VWAP on falling volume, then a candle closes outside the ±1σ band on 2× volume. Buy in the breakout direction.',
     exit: 'Squeeze height projected from the break, then trail.',
     stop: 'Back inside VWAP.',
@@ -84,7 +86,7 @@ export const RULES: Rule[] = [
     apply: TOP5_30,
   },
   {
-    id: '5ema', group: 'scalp', name: '5 EMA alert candle', who: 'Subasish Pani (Power of Stocks)', when: 'All day · 15-min for buys',
+    id: '5ema', evidence: 'claim', group: 'scalp', name: '5 EMA alert candle', who: 'Subasish Pani (Power of Stocks)', when: 'All day · 15-min for buys',
     entry: 'A 15-min candle closing entirely above the 5 EMA (no wick touch) is the alert candle. Buy CE when a later candle breaks its high. Mirror for PE below the EMA.',
     exit: 'Minimum 1:3. Many small stops, few big wins.',
     stop: 'Alert-candle low (for buys).',
@@ -93,7 +95,7 @@ export const RULES: Rule[] = [
     apply: BOARD_BUY,
   },
   {
-    id: '2candle', group: 'scalp', name: '2 Candle Theory', who: 'Sivakumar Jayachandran (OiPulse)', when: '3- or 5-min chart', index: 'Nifty · Bank Nifty',
+    id: '2candle', evidence: 'claim', group: 'scalp', name: '2 Candle Theory', who: 'Sivakumar Jayachandran (OiPulse)', when: '3- or 5-min chart', index: 'Nifty · Bank Nifty',
     entry: 'Above VWAP, OI shows long build-up or short covering, RSI 50–75, and two consecutive candles each on heavy volume (BN >50K, Nifty >125K). Enter on the 3rd candle. Mirror for PE (below VWAP, RSI <40).',
     exit: 'Not published — use 1:2 and a 30-min time stop.',
     stop: 'Low of the 1st candle.',
@@ -101,7 +103,7 @@ export const RULES: Rule[] = [
     apply: TOP5_30,
   },
   {
-    id: 'gamma-zone', group: 'scalp', name: 'Expiry-day gamma zone', who: 'Sahi', when: 'Expiry day 9:30–10:30', index: 'Nifty (Tue) · Sensex (Thu)',
+    id: 'gamma-zone', evidence: 'none', group: 'scalp', name: 'Expiry-day gamma zone', who: 'Sahi', when: 'Expiry day 9:30–10:30', index: 'Nifty (Tue) · Sensex (Thu)',
     entry: 'ATM only, on a strong directional signal (ORB break, VWAP confirmation or OI support).',
     exit: 'Take 15–25 pts of premium and leave. 30-min time stop. Max 2–3 trades. Flat by 2:00 PM.',
     stop: '30% of premium.',
@@ -109,7 +111,7 @@ export const RULES: Rule[] = [
     apply: TOP5_30,
   },
   {
-    id: 'gamma-blast', group: 'scalp', name: 'Gamma blast (lottery size only)', when: 'Expiry day 2:00–3:15', index: 'Nifty · Sensex',
+    id: 'gamma-blast', evidence: 'claim', group: 'scalp', name: 'Gamma blast (lottery size only)', when: 'Expiry day 2:00–3:15', index: 'Nifty · Sensex',
     entry: 'After a 2:00–2:30 range forms, buy ATM CE on a break above the 30-min high (PE below the low) with volume and rising IV.',
     exit: '3–5× premium. Tiny size — most of these lose.',
     stop: 'Fixed rupee stop (e.g. buy ₹25, stop ₹10).',
@@ -117,7 +119,7 @@ export const RULES: Rule[] = [
     source: { label: 'Enrichmoney — gamma blast', url: 'https://enrichmoney.in/blog/gamma-blast-strategy-nse-options-expiry' },
   },
   {
-    id: 'windows', group: 'scalp', name: 'Trade the two windows only', when: '9:30–10:45 · 1:30–3:10',
+    id: 'windows', evidence: 'study', group: 'scalp', name: 'Trade the two windows only', when: '9:30–10:45 · 1:30–3:10',
     entry: 'Take setups in the morning and afternoon windows. Observe-only 9:15–9:30. Avoid 11:30–1:30: fake breakouts and sideways chop.',
     exit: 'Always flat before 3:15 (broker square-off 3:15–3:20).',
     source: { label: 'AlgoTest — best time frames', url: 'https://algotest.in/blog/best-time-frame-for-intraday-trading.md' },
@@ -125,7 +127,7 @@ export const RULES: Rule[] = [
 
   // ---------- Day buys ----------
   {
-    id: 'bias-gate', group: 'buy', name: 'CE or PE? The VWAP + 20 EMA gate', when: 'Before every buy',
+    id: 'bias-gate', evidence: 'none', group: 'buy', name: 'CE or PE? The VWAP + 20 EMA gate', when: 'Before every buy',
     entry: 'Buy CE only when spot is above BOTH VWAP and the 20 EMA (RSI >50). Buy PE only below both (RSI <40). Otherwise no directional buy.',
     exit: 'Per your setup — this is the filter, not the trade.',
     notes: ['Read it on the index/futures chart, never on the option’s own chart.'],
@@ -133,28 +135,28 @@ export const RULES: Rule[] = [
     apply: { label: 'Open Signals', section: 'signals' },
   },
   {
-    id: 'oi-grid', group: 'buy', name: 'Price + OI confirmation', when: 'On the signal candle',
+    id: 'oi-grid', evidence: 'none', group: 'buy', name: 'Price + OI confirmation', when: 'On the signal candle',
     entry: 'Price up + OI up = long build-up (trade it). Price down + OI up = short build-up (trade it). Price up + OI down = short covering (fade or skip). Price down + OI down = long unwinding (skip).',
     exit: 'Exit when the build-up flips against you.',
     source: { label: 'AlgoTest — reading Nifty OI', url: 'https://algotest.in/blog/how-to-read-nifty-oi-data.md' },
     apply: { label: 'Open OI & volatility', section: 'analytics' },
   },
   {
-    id: 'oi-walls', group: 'buy', name: 'OI walls: trade between, break with falling OI', when: 'All day',
+    id: 'oi-walls', evidence: 'none', group: 'buy', name: 'OI walls: trade between, break with falling OI', when: 'All day',
     entry: 'Highest put-OI strike = support, highest call-OI strike = resistance. Buy CE through a call wall only if that strike’s call OI is FALLING (writers leaving). Rising OI on the break = fresh writing → stay out.',
     exit: 'Next wall, or when OI at the broken strike starts rising again.',
     source: { label: 'TradingView — option chain OI', url: 'https://www.tradingview.com/chart/BANKNIFTY/oomgZYtu-Option-Chain-Analysis-Open-Interest-OI' },
     apply: { label: 'Open the chain', section: 'chain' },
   },
   {
-    id: 'pcr', group: 'buy', name: 'PCR extremes (contrarian)', when: 'Daily bias',
+    id: 'pcr', evidence: 'none', group: 'buy', name: 'PCR extremes (contrarian)', when: 'Daily bias',
     entry: 'OI PCR above ~1.3 = crowded bearish → look for a bullish reversal. Below ~0.7 = crowded bullish → caution, favour PE. Needs price confirmation; not a trigger by itself.',
     exit: 'When PCR returns toward 1.',
     source: { label: 'Onetradejournal — PCR', url: 'https://onetradejournal.com/indicators/put-call-ratio-indicator' },
     apply: { label: 'Open OI & volatility', section: 'analytics' },
   },
   {
-    id: 'maxpain', group: 'buy', name: 'Max-pain pin (expiry afternoon)', when: 'Expiry day 12:30–1:30',
+    id: 'maxpain', evidence: 'none', group: 'buy', name: 'Max-pain pin (expiry afternoon)', when: 'Expiry day 12:30–1:30',
     entry: 'At 12:30 find the strike with the highest combined CE+PE OI. Fade moves away from it after 1 PM.',
     exit: 'The pin strike or half the distance. Out by 1:30.',
     stop: 'Spot more than 150 pts past the pin.',
@@ -162,7 +164,7 @@ export const RULES: Rule[] = [
     apply: { label: 'Open OI & volatility', section: 'analytics' },
   },
   {
-    id: 'ivp', group: 'buy', name: 'IV percentile decides buy vs sell', when: 'Before the day starts',
+    id: 'ivp', evidence: 'study', group: 'buy', name: 'IV percentile decides buy vs sell', when: 'Before the day starts',
     entry: 'India VIX 1-year percentile below 30 → buy premium (straddles, directional buys). Above 70 → sell premium with defined risk. 30–70 → half size or spreads.',
     exit: 'Switch modules when the regime changes.',
     notes: ['Don’t buy when VIX is already above 20–25. Don’t sell naked when VIX is below 12–14.', 'Don’t sell while VIX has risen 3 days in a row — wait for the first red VIX day.'],
@@ -170,21 +172,21 @@ export const RULES: Rule[] = [
     apply: { label: 'See the board', section: 'desk', board: 'all' },
   },
   {
-    id: 'straddle-range', group: 'buy', name: 'Expected move = 0.85 × ATM straddle', when: 'At entry',
+    id: 'straddle-range', evidence: 'backtest', group: 'buy', name: 'Expected move = 0.85 × ATM straddle', when: 'At entry',
     entry: 'Only take a buy whose target sits inside today’s expected move. Skip if the day’s range has already used it up.',
     exit: 'At the target — the market rarely gives more than the straddle price.',
     source: { label: 'StockMojo — straddle chart', url: 'https://stockmojo.in/straddle-chart/nifty' },
     apply: { label: 'Run Top 5', section: 'top5' },
   },
   {
-    id: 'delta', group: 'buy', name: 'ATM or one strike ITM, never far OTM', when: 'Strike choice',
+    id: 'delta', evidence: 'none', group: 'buy', name: 'ATM or one strike ITM, never far OTM', when: 'Strike choice',
     entry: 'Delta 0.4–0.6 for intraday direction. ATM only on expiry day. Deep ITM for slow, high-conviction moves. Far OTM (delta 0.1–0.2) is a lottery ticket.',
     exit: 'Target in premium, not in spot points.',
     source: { label: 'AlgoTest — ITM / ATM / OTM', url: 'https://algotest.in/blog/itm-atm-otm.md' },
     apply: { label: 'Run Top 5', section: 'top5' },
   },
   {
-    id: 'checklist', group: 'buy', name: 'Buyer’s pre-trade checklist', when: 'Every trade',
+    id: 'checklist', evidence: 'none', group: 'buy', name: 'Buyer’s pre-trade checklist', when: 'Every trade',
     entry: 'Higher-timeframe trend agrees · breakout or pullback with rising volume · healthy OI and tight spread · IV low and likely to rise · no event before expiry · target, stop and time-stop written down.',
     exit: 'Target, stop or time-stop — whichever comes first. Never average a losing long.',
     source: { label: 'Onetradejournal — Nifty option buying', url: 'https://onetradejournal.com/strategies/nifty-options-buying-strategy' },
@@ -192,16 +194,16 @@ export const RULES: Rule[] = [
 
   // ---------- Selling ----------
   {
-    id: '920', group: 'sell', name: '9:20 short straddle', who: 'IT Jegan · AlgoTest', when: '9:20 (or 10:30) → 3:10', index: 'Nifty weekly',
+    id: '920', evidence: 'backtest', group: 'sell', name: '9:20 short straddle', who: 'IT Jegan · AlgoTest', when: '9:20 (or 10:30) → 3:10', index: 'Nifty weekly',
     entry: 'Sell ATM CE + ATM PE at 9:20. Tight stop before 10 AM (trend version), wider after 10 AM (theta version).',
     exit: '3:10 PM. If one leg stops out, the other runs with its own stop.',
     stop: '25% per leg (25–35% range). SL-limit orders, round-100 strikes.',
-    notes: ['Marketcalls’ 2017–2023 backtest: the 9:20 edge faded in low-vol 2023; a 10:30 entry did better.', 'Skip on RBI, Budget, Fed and results days.'],
+    notes: ['Marketcalls 2017–2023: edge faded in low-vol 2023; a 10:30 entry did better. Stockmock: a 20% stop beat 30%.', 'TradingQnA ~1,300 trades: remove the best 10% of days and the result turns negative; Wednesday was best; gap and high-VIX days paid.', 'Skip on RBI, Budget, Fed and results days.'],
     source: { label: 'AlgoTest — in conversation with IT Jegan', url: 'https://algotest.in/blog/in-conversation-with-it-jegan/' },
     apply: BOARD_SELL,
   },
   {
-    id: 'strangle', group: 'sell', name: 'Weekly 16–20 delta strangle', when: 'IV elevated and rolling over', index: 'Nifty weekly',
+    id: 'strangle', evidence: 'backtest', group: 'sell', name: 'Weekly 16–20 delta strangle', when: 'IV elevated and rolling over', index: 'Nifty weekly',
     entry: 'Sell CE and PE at delta 0.16–0.20 (≈1σ). Enter only when IV is high and starting to fall, never while rising.',
     exit: 'Buy back at 50–70% of the credit.',
     stop: 'Loss = 2× the credit, or spot touches a short strike.',
@@ -210,7 +212,7 @@ export const RULES: Rule[] = [
     apply: BOARD_SELL,
   },
   {
-    id: 'condor', group: 'sell', name: 'Weekly iron condor', when: 'After 9:45, no-event week', index: 'Nifty (Tue) · Sensex (Thu)',
+    id: 'condor', evidence: 'claim', group: 'sell', name: 'Weekly iron condor', when: 'After 9:45, no-event week', index: 'Nifty (Tue) · Sensex (Thu)',
     entry: 'Sell the 0.15–0.20 delta strangle, buy wings 100–200 pts further out.',
     exit: 'Take 50–60% of the credit. Close the losing side at a 50% loss and let the other decay.',
     stop: '2× the credit, or price at a short strike — whichever first. Never the max loss.',
@@ -219,13 +221,13 @@ export const RULES: Rule[] = [
     apply: { label: 'Show ≈90% POP condor', section: 'desk', board: 'pop90' },
   },
   {
-    id: 'straddle-adjust', group: 'sell', name: 'Straddle adjustments', when: 'While a straddle is on', index: 'Bank Nifty',
+    id: 'straddle-adjust', evidence: 'none', group: 'sell', name: 'Straddle adjustments', when: 'While a straddle is on', index: 'Bank Nifty',
     entry: 'Shift to the new ATM when BN moves 200 pts from the strike, or net delta breaches ±0.30. Max 2 adjustments, then exit.',
     exit: '10:30 adjust if premium +25% · 1:00 close if worse than −15% · 2:30 close if losing · 3:15 flat.',
     source: { label: 'BankNiftyOptions — straddle adjustments', url: 'https://bankniftyoptions-com.pages.dev/artigos/banknifty-straddle-adjustment-guide' },
   },
   {
-    id: '1pm-straddle', group: 'sell', name: '1 PM expiry straddle', who: '1LyAlgos', when: 'Expiry day 1:00 → 3:20', index: 'Sensex (Thu)',
+    id: '1pm-straddle', evidence: 'claim', group: 'sell', name: '1 PM expiry straddle', who: '1LyAlgos', when: 'Expiry day 1:00 → 3:20', index: 'Sensex (Thu)',
     entry: 'Sell ATM CE + PE at 1:00 PM on expiry day.',
     exit: '3:20 PM, or when the combined premium has dropped 30% — whichever first.',
     stop: 'Combined premium +30%. Skip Budget / RBI days.',
@@ -234,7 +236,7 @@ export const RULES: Rule[] = [
     apply: BOARD_SELL,
   },
   {
-    id: 'expiry-condor', group: 'sell', name: 'Expiry-day decay condor', when: 'Expiry day 11:00 → 2:30',
+    id: 'expiry-condor', evidence: 'claim', group: 'sell', name: 'Expiry-day decay condor', when: 'Expiry day 11:00 → 2:30',
     entry: 'Strikes 200–300 pts OTM with ₹20–40 left each; sell both, buy wings 200 pts further. Target ₹30–50 total credit.',
     exit: '2:30 PM, at 60–75% of the credit.',
     stop: 'Any sold leg doubles.',
@@ -243,7 +245,7 @@ export const RULES: Rule[] = [
     apply: { label: 'Show ≈90% POP condor', section: 'desk', board: 'pop90' },
   },
   {
-    id: 'mitesh', group: 'sell', name: 'Positional selling on breakouts', who: 'Mitesh Patel (session notes)', when: 'After a confirmed breakout', index: 'Bank Nifty',
+    id: 'mitesh', evidence: 'claim', group: 'sell', name: 'Positional selling on breakouts', who: 'Mitesh Patel (session notes)', when: 'After a confirmed breakout', index: 'Bank Nifty',
     entry: 'Trade only breakouts/breakdowns from consolidation. After a bullish breakout sell PE below the new support and roll daily to the prior close. In a range: strangles. Near resistance: straddle, then one-sided once it breaks.',
     exit: '≈4% a month target. 90% capital in positional selling, 10% for adjustments.',
     stop: '≤1% of capital per trade. Stops only work intraday — enter after confirmation, not before.',
@@ -252,7 +254,7 @@ export const RULES: Rule[] = [
     apply: BOARD_SELL,
   },
   {
-    id: 'no-sell-days', group: 'sell', name: 'When NOT to sell', when: 'Event days',
+    id: 'no-sell-days', evidence: 'backtest', group: 'sell', name: 'When NOT to sell', when: 'Event days',
     entry: 'No fresh naked premium before RBI policy, Union Budget, US Fed, index-heavy results or election results. On expiry day never naked — 2% extra margin applies.',
     exit: 'Use defined risk or half size if you must hold through.',
     notes: ['Budget 2023 example: a long ATM straddle lost ₹3.2 L to IV crush while a 30-delta short made ₹85 K — IV crush hurts buyers most.'],
@@ -314,37 +316,37 @@ export const RULES: Rule[] = [
 
   // ---------- Traps ----------
   {
-    id: 'weekend-theta', group: 'traps', name: 'Weekend theta trap (Tuesday expiry)', when: 'Friday → Monday', index: 'Nifty weekly',
+    id: 'weekend-theta', evidence: 'study', group: 'traps', name: 'Weekend theta trap (Tuesday expiry)', when: 'Friday → Monday', index: 'Nifty weekly',
     entry: 'Monday is now 1 day to expiry, so Friday→Monday decay is brutal. Do not hold weekly buys over the weekend.',
     exit: 'Buy weeklies in the last 1–2 days only to scalp momentum.',
     source: { label: 'IndMoney — Tuesday expiry impact', url: 'https://www.indmoney.com/blog/stocks/nse-weekly-expiry-tuesday-traders-strategy-impact' },
   },
   {
-    id: 'otm-afternoon', group: 'traps', name: 'Expiry-afternoon OTM trap', when: 'Expiry day after 10:30',
+    id: 'otm-afternoon', evidence: 'study', group: 'traps', name: 'Expiry-afternoon OTM trap', when: 'Expiry day after 10:30',
     entry: 'From 10:30 the ATM can lose 30–40% of what is left; ₹40 at 1 PM is ₹5 by 3 PM. No OTM buys after 10:30, no ₹2 options, buyers flat by 2 PM.',
     exit: 'Gamma-blast size only after 2 PM, if at all.',
     source: { label: 'AlgoTest — 7 expiry day rules', url: 'https://algotest.in/blog/nifty-expiry-day.md' },
   },
   {
-    id: 'crowded', group: 'traps', name: 'Crowded 9:20 stops get hunted', when: '9:20–9:40',
+    id: 'crowded', evidence: 'backtest', group: 'traps', name: 'Crowded 9:20 stops get hunted', when: '9:20–9:40',
     entry: 'Thousands of identical 9:20 straddle stops cluster on thin 50-strikes; one PE jumped ₹122 → ₹803 in a second on an SL-M cascade.',
     exit: 'Delay to 10:30, use SL-limit, round-100 strikes, budget for slippage.',
     source: { label: 'Marketcalls — 9:20 straddlers gamed', url: 'https://www.marketcalls.in/futures-and-options/how-the-9-20-intraday-straddlers-are-being-gamed.html' },
   },
   {
-    id: 'gaps', group: 'traps', name: 'Gap rules', when: 'First 30 minutes',
+    id: 'gaps', evidence: 'backtest', group: 'traps', name: 'Gap rules', when: 'First 30 minutes',
     entry: 'Gap = ±100 pts on Nifty. Filled within 15–30 min = weak gap → reversal bias. Holds and breaks the opening range = trend day. Skip level setups when the open gaps through the level.',
     exit: 'No trade until the gap resolves one way.',
     source: { label: '5paisa — gap theory', url: 'https://www.5paisa.com/finschool/course/options-scalping-course/trading-strategies/' },
   },
   {
-    id: 'vix-chase', group: 'traps', name: 'Chasing when VIX is already high', when: 'VIX above 20',
+    id: 'vix-chase', evidence: 'none', group: 'traps', name: 'Chasing when VIX is already high', when: 'VIX above 20',
     entry: 'Premiums are rich: a right direction can still lose to IV crush. Prefer spreads or wait.',
     exit: 'Buy premium when VIX is low and rising, not after the spike.',
     source: { label: 'BankNiftyOptions — IV percentile', url: 'https://bankniftyoptions-com.pages.dev/artigos/banknifty-iv-percentile-strategy' },
   },
   {
-    id: 'claims', group: 'traps', name: '“95% accuracy” does not exist', when: 'Always',
+    id: 'claims', evidence: 'study', group: 'traps', name: '“95% accuracy” does not exist', when: 'Always',
     entry: 'SEBI: 91% of individual F&O traders lost money in FY25. Sellers win 65–80% with occasional big losses; buyers win 35–45% with bigger wins. Anyone selling certainty is selling you.',
     exit: 'Trust your Journal numbers over anyone’s claims, including the ones on this page.',
     apply: { label: 'Open Journal', section: 'journal' },
@@ -383,4 +385,81 @@ export const RULES: Rule[] = [
     exit: 'The app’s ₹/trade figures already subtract estimated charges.',
     apply: { label: 'Set charges', section: 'settings' },
   },
+  // ---------- Added from the Nov 2026 evidence review ----------
+  {
+    id: 'first-candle', evidence: 'backtest', group: 'scalp', name: 'Big first candle → ride it', when: '9:30–10:45', index: 'Nifty',
+    entry: 'If the 9:15–9:30 candle spans more than 0.24% of spot (~60 pts), trade only in its direction on the break of its high/low.',
+    exit: '2R, or the 14:30 time stop.',
+    stop: 'Other side of the first candle.',
+    notes: ['Intraday Lab, 2,148 sessions: a first candle over 0.24% continued 73% of the time; under 0.10% only 53%.', 'A bearish first candle reversed 64% of the time — be slower to buy puts on it.'],
+    claim: '73% continuation when the first candle is over 0.24% (vendor backtest).',
+    source: { label: 'Intraday Lab — first 15-minute candle', url: 'https://intradaylab.com/blog/nifty-first-15-minute-candle-analysis' },
+    apply: TOP5_30,
+  },
+  {
+    id: 'zerodha-orb', evidence: 'backtest', group: 'buy', name: 'Range break on the option premium', who: 'Zerodha “In the Money”', when: '9:15–11:15', index: 'Nifty weekly',
+    entry: 'Pick the strike priced near ₹200. Mark the premium’s 9:15–11:15 high. Buy on a break above it.',
+    exit: '2R. Flat by close.',
+    stop: '20% of the premium.',
+    notes: ['Jan 2022–Feb 2026, after 0.2% slippage: ~48% win rate, drawdown close to 45%. Selling the break of the range low was steadier (every year positive, ~6% drawdown).'],
+    claim: '48% win after costs (broker backtest).',
+    source: { label: 'Zerodha — how to trade ORB with options', url: 'https://inthemoneybyzerodha.substack.com/p/how-to-trade-opening-range-breakout' },
+    apply: BOARD_BUY,
+  },
+  {
+    id: 'rsi50', evidence: 'backtest', group: 'buy', name: 'RSI 50 line, ATM only', when: 'Trading windows', index: 'Nifty',
+    entry: 'RSI above 50 → buy ATM CE; below 50 → ATM PE. Pick the strike near ₹100.',
+    exit: '₹150 target on a ₹100 entry, trail once past 1R.',
+    stop: '₹75 on a ₹100 entry.',
+    claim: '829 trades, 53% win over 5 years (platform backtest, capital and costs not stated).',
+    source: { label: 'Multibagg — Nifty algo backtests 2026', url: 'https://www.multibagg.ai/market-pulse/articles/nifty-algo-backtest-results-2026-cmrg191cpjai5np0jleu5s47x' },
+    apply: BOARD_BUY,
+  },
+  {
+    id: 'pani-zones', evidence: 'claim', group: 'risk', name: 'Buyer sizing the Power of Stocks way', who: 'Subasish Pani', when: '9:15–10:30 · 13:30–15:30',
+    entry: 'Buy premiums around ₹100 (₹40–50 ATM on expiry day after 12:30). Breakouts before 12 PM usually fail — prefer post-12:30 breakouts.',
+    exit: 'Aim 1:4 on option buys; 1:1 is fine on expiry day.',
+    stop: '₹20–25 on a ₹100 option (20–25%).',
+    claim: 'Setup accuracy 75%; option buyer win probability 33% — profit comes from the size of wins.',
+    source: { label: 'Subasish Pani thread (threadreader)', url: 'https://threadreaderapp.com/thread/1530855016050765824.html' },
+  },
+  {
+    id: 'vix-bands', evidence: 'study', group: 'buy', name: 'Where India VIX usually sits', when: 'Before the day starts',
+    entry: 'Long-run median 16.2; 2023–2025 median 13.2. Above 20 on only 24% of days since 2010, above 30 on 2.7%. Daily expected move ≈ spot × VIX ÷ √252.',
+    exit: 'Below 12: cheap premium but small ranges — smaller targets. 16–20: prefer spreads. Above 20: halve size. Above 25: wait unless the range is already 0.4%+.',
+    notes: ['The week’s high and low stayed inside the VIX-implied range 57% of weeks; the close did 77%.'],
+    source: { label: 'Tapetide — India VIX history', url: 'https://tapetide.com/insight/market-valuation/india-vix-history' },
+  },
+  {
+    id: 'last30', evidence: 'study', group: 'rules', name: 'Expiry: the day is normal, the close is not', when: 'Expiry day 15:00–15:30',
+    entry: 'Whole-day range on expiry is no bigger than other days. The last 30 minutes carry 53–67% more variance; 15:00–15:30 is the most volatile half-hour (SEBI).',
+    exit: 'ATM straddle time value is about ₹6 at 15:00 — there is nothing left for buyers to collect.',
+    notes: ['SEBI 2024: Nifty 15:00–15:30 range 0.33% on expiry vs 0.25–0.28% other days.', 'IIMA: volatility 34% higher in the last 15 minutes, 58% higher 15:00–15:15.'],
+    source: { label: 'SEBI consultation paper, 30 Jul 2024', url: 'https://www.sebi.gov.in/sebi_data/attachdocs/jul-2024/1722407296072.pdf' },
+  },
+  {
+    id: 'gap-stats', evidence: 'backtest', group: 'traps', name: 'Big gaps: what actually happens', when: 'First 30 minutes', index: 'Nifty',
+    entry: 'Gap-up ≥1%: filled the same day only 29% of the time, but closed below the open 55%. Gap-down ≥1%: filled 17% (bigger than 1.5%: almost never).',
+    exit: 'Do not buy the gap direction at the open; do not expect a fill either. Wait for the 9:30 range.',
+    source: { label: 'Intraday Lab — gap-up history', url: 'https://intradaylab.com/blog/nifty-gap-up-history-analysis' },
+  },
+  {
+    id: 'oi-evidence', evidence: 'study', group: 'traps', name: 'OI, PCR and max pain: weak signals', when: 'Always',
+    entry: 'Studies on NSE find no reliable price prediction from OI build-up (66% of cases no correlation), index-option PCR (null in 2022–23) or intraday OI repositioning. Max-pain “convergence” has no counted Nifty study.',
+    exit: 'Use them as tie-breakers and for stop/target placement, never as the reason to enter. The app weights them 5 points each and marks them weak.',
+    source: { label: 'Singh & Chaudhary 2024 — PCR and index options', url: 'https://ideas.repec.org/h/spr/prbchp/978-981-97-6242-2_6.html' },
+  },
+  {
+    id: 'ema-cross', evidence: 'backtest', group: 'traps', name: 'Plain EMA crossover buying', when: 'Always', index: 'Nifty',
+    entry: '9/26 EMA crossover, buy ATM, reverse on the opposite cross: 727 trades, 35% win, an 18-trade losing streak (Marketcalls, 2018–2021, before costs).',
+    exit: 'Indicator crosses alone are not an edge. Add the time window, the range and a 20% stop — or skip it.',
+    source: { label: 'Marketcalls — EMA crossover option buying', url: 'https://www.marketcalls.in/quant-trading/simple-ema-crossover-option-buying-strategy-do-simple-trading-strategies-really-work-part5.html' },
+  },
+  {
+    id: 'timeshape', evidence: 'study', group: 'rules', name: 'The day’s shape in numbers', when: 'Every day',
+    entry: 'Nifty futures hourly volatility 2011–2018: 9:15–10:00 0.35% · 10–11 0.24% · 11–12 0.22% (lowest) · 13–14 0.29% · 14–15 0.33%. SEBI 2024: the first 45 minutes move 2–2.5× a midday half-hour.',
+    exit: 'That is why the app trades 9:30–10:45 and 13:30–15:00 and waits through lunch.',
+    source: { label: 'Singh & Gangwar 2018 (MPRA 89689)', url: 'https://mpra.ub.uni-muenchen.de/89689/' },
+  },
+
 ]

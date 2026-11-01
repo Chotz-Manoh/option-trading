@@ -401,7 +401,7 @@ export const useApp = create<State>((set, get) => ({
 }))
 
 /** Fastest refresh each source allows (Dhan's option-chain API takes one request per 3 s). */
-const minRefresh = (s: Settings) => (s.dataSource === 'dhan' ? 15 : 5)
+const minRefresh = (s: Settings) => (s.dataSource === 'dhan' ? 15 : s.dataSource === 'upstox' ? 30 : 5) // Upstox rate-limits the option-chain call under 30 s
 
 function startTimer() {
   if (refreshTimer) clearInterval(refreshTimer)

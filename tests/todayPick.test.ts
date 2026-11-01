@@ -17,7 +17,7 @@ function chain(spot: number, now: number): OptionChain {
     const gc = bsGreeks('CE', spot, k, T, 0.06, 0.13), gp = bsGreeks('PE', spot, k, T, 0.06, 0.13)
     rows.push({ strike: k, call: q(Math.max(0.5, gc.price), gc.delta), put: q(Math.max(0.5, gp.price), gp.delta) })
   }
-  return { index: 'NIFTY', spot, previousClose: spot - 60, expiry: EXP, rows, lotSize: 65, fetchedAt: now, source: 'test' }
+  return { index: 'NIFTY', spot, previousClose: 24800, expiry: EXP, rows, lotSize: 65, fetchedAt: now, source: 'test' }
 }
 const sig = (score: number, spot: number, oi: 'up' | 'down' = 'up'): IndexSignal => ({
   index: 'NIFTY', spot, changePct: 0.3, score, bias: score > 0 ? 'Bullish' : score < 0 ? 'Bearish' : 'Range-bound', confidence: 80, regime: 'Normal IV', ivPercentile: 45, ivRank: 40,
@@ -28,7 +28,7 @@ const sig = (score: number, spot: number, oi: 'up' | 'down' = 'up'): IndexSignal
 } as IndexSignal)
 const bars = (now: number, slope: number): Candle[] => {
   const out: Candle[] = []
-  for (let t = at(DAY, 9, 15), i = 0; t < now; t += 300_000, i++) { const c = 24800 + slope * i; out.push({ time: t, open: c - slope, high: c + 6, low: c - slope - 4, close: c, volume: 1000 }) }
+  for (let t = at(DAY, 9, 15), i = 0; t < now; t += 300_000, i++) { const c = 24800 + slope * i; out.push({ time: t, open: c - slope, high: Math.max(c, c - slope) + 6, low: Math.min(c, c - slope) - 4, close: c, volume: 1000 }) }
   return out
 }
 function input(slope: number, h = 10, m = 15, oi: 'up' | 'down' = 'up') {
@@ -53,8 +53,8 @@ describe('time windows', () => {
 })
 
 describe("today's pick", () => {
-  it('a clean up-trend above VWAP/EMA with put writers building support becomes a call TRADE with a full plan', () => {
-    const p = pickForIndex(input(4))
+  it('a clean up-trend that broke the opening range, above VWAP/EMA, with put writers building support becomes a call TRADE with a full plan', () => {
+    const p = pickForIndex(input(15))
     expect(p.status).toBe('TRADE')
     expect(p.type).toBe('CE')
     expect(p.score).toBeGreaterThanOrEqual(TRADE_SCORE)
@@ -64,11 +64,18 @@ describe("today's pick", () => {
     expect(p.lots).toBeGreaterThanOrEqual(1)
     expect(p.headline).toMatch(/buy \d+ CE/)
     expect(p.checks.find((c) => c.name === 'Trend gate')!.pass).toBe(true)
+    expect(p.checks.find((c) => c.name === 'Opening range')!.pass).toBe(true)
+    expect(p.checks.filter((c) => c.weak).map((c) => c.name)).toEqual(['Trend gate', 'OI', 'PCR'])
   })
   it('a down-trend becomes a put', () => {
-    const p = pickForIndex(input(-4, 10, 15, 'down'))
+    const p = pickForIndex(input(-15, 10, 15, 'down'))
     expect(p.type).toBe('PE')
     expect(p.status).toBe('TRADE')
+  })
+  it('a slow drift that never broke the 15-minute range scores below the bar and waits', () => {
+    const p = pickForIndex(input(2))
+    expect(p.status).toBe('WAIT')
+    expect(p.checks.find((c) => c.name === 'Opening range')!.pass).toBe(false)
   })
   it('flat bars give WAIT with "no direction" and no fake plan', () => {
     const p = pickForIndex(input(0))
@@ -77,19 +84,19 @@ describe("today's pick", () => {
     expect(p.entry).toBeUndefined()
   })
   it('the lunch window is a WAIT that names the next window even on a clean trend', () => {
-    const p = pickForIndex(input(4, 12, 0))
+    const p = pickForIndex(input(15, 12, 0))
     expect(p.status).toBe('WAIT')
     expect(p.nextWindow).toBe('13:30')
     expect(p.checks.find((c) => c.name === 'Time window')!.pass).toBe(false)
   })
   it('event days and closed markets never produce a trade', () => {
-    expect(pickForIndex({ ...input(4), eventDay: true }).status).toBe('WAIT')
-    expect(pickForIndex(input(4, 16, 0)).status).toBe('WAIT')
+    expect(pickForIndex({ ...input(15), eventDay: true }).status).toBe('WAIT')
+    expect(pickForIndex(input(15, 16, 0)).status).toBe('WAIT')
   })
   it('across indices the TRADE wins over a WAIT; with only WAITs the closest to firing is shown', () => {
-    const best = todayPick([input(0), input(4)])!
+    const best = todayPick([input(0), input(15)])!
     expect(best.status).toBe('TRADE')
-    const wait = todayPick([input(0), input(4, 12, 0)])!
+    const wait = todayPick([input(0), input(15, 12, 0)])!
     expect(wait.status).toBe('WAIT')
     expect(wait.score).toBeGreaterThan(0)
   })

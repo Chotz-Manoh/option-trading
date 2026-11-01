@@ -74,6 +74,7 @@ function RuleCard({ rule: r, onApply }: { rule: Rule; onApply: () => void }) {
           <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
             <b style={{ fontSize: 15 }}>{r.name}</b>
             {r.index && <span className="badge" style={{ color: 'var(--muted)', background: 'var(--tile)', fontWeight: 600 }}>{r.index}</span>}
+            {r.evidence && <span className={`badge ev ev-${r.evidence}`}>{r.evidence === 'none' ? 'no data' : r.evidence}</span>}
           </div>
           <div className="small muted" style={{ marginTop: 2 }}>{r.who ? `${r.who} · ` : ''}{r.when}</div>
         </div>
