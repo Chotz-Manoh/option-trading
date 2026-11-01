@@ -10,7 +10,7 @@ import { gapInfo, gaussian, openingRange, rng, touchProbabilities } from './mast
 import { positionSize } from './riskEngine'
 import type { IndexSignal } from './signalEngine'
 
-export type ProKind = 'BUY CE' | 'BUY PE' | 'SELL STRADDLE' | 'SELL STRANGLE' | 'IRON CONDOR' | 'BUY STRADDLE'
+export type ProKind = 'BUY CE' | 'BUY PE' | 'SELL STRADDLE' | 'SELL STRANGLE' | 'IRON CONDOR' | 'IRON FLY' | 'BUY STRADDLE'
 
 export interface ProSource { who: string; what: string; url: string }
 
@@ -559,6 +559,91 @@ export function proStrategies(inp: ProInput): ProResult {
       checks, score, window: '9:45–14:45, weekly', plan: () => !noTradeReason ? popPlan() : undefined })
   }
 
+  // ---------- P R Sundar's public rules (workshop decks, X posts, interviews; his claims are labelled) ----------
+  // Sundar is a seller first: far-OTM strangles at support/resistance, never naked into a trend, "hedge is the
+  // edge", portfolio stop 2–4% of capital, and he discourages small accounts. Two of his setups run on live data.
+
+  // 14. Sundar far-OTM strangle: put at the support wall, call at the resistance wall, each at least ~1.5σ
+  //     (to expiry) away — his "keep at least 400 points away" scaled to today's index — in the last two weeks
+  //     before expiry, when IV is worth selling and the index is not trending. Sized so a 2× credit stop costs
+  //     ≤ 2% of capital (his portfolio stop), with the "fire-fight" rule: cut or hedge when a short strike is
+  //     threatened, never average.
+  {
+    const far = 1.5 * popMove
+    const wantLo = Math.min(a.support, chain.spot - far), wantHi = Math.max(a.resistance, chain.spot + far)
+    const lo = Math.max(wantLo, chainLo), hi = Math.min(wantHi, chainHi)
+    const reachOk = chain.spot - lo >= 1.2 * popMove && hi - chain.spot >= 1.2 * popMove
+    const dte = a.daysToExpiry
+    const checks = [
+      gate(Math.abs(s.score) < 40 ? pass(`No trend (score ${s.score.toFixed(0)}) — Sundar: a strangle is the most dangerous trade in a trending market`) : miss(`Trending (score ${s.score.toFixed(0)}) — never sell a naked strangle into a trend`)),
+      gate(ivp >= 40 ? pass(`IV percentile ${ivp.toFixed(0)} — "sell when VIX is high"`) : miss(`IV percentile ${ivp.toFixed(0)} — too low to sell; he buys or combines in low VIX`)),
+      gate(dte >= 1 && dte <= 14 ? pass(`${dte.toFixed(0)} days to expiry — "easier in the last two weeks"`) : miss(dte < 1 ? 'Expiry day — use the iron fly instead' : `${dte.toFixed(0)} days to expiry (wants ≤ 14)`)),
+      gate(reachOk ? pass(`Strikes ${lo.toFixed(0)} / ${hi.toFixed(0)} sit beyond the OI walls and ≥ 1.5σ away`) : miss('Chain too narrow to get 1.5σ away — raise Settings → Chain strikes ±')),
+      gate(timeOk(9 * 60 + 45, 14 * 60 + 30) ? pass('After the opening noise (9:45–14:30)') : miss('Enter between 9:45 and 14:30')),
+      Math.abs(s.changePct) < 0.8 ? pass(`Calm day (${s.changePct.toFixed(2)}%)`) : miss(`Day move ${s.changePct.toFixed(2)}% — wait for it to settle`),
+      a.avgSpreadPctNearATM <= 3 ? pass('Liquid chain') : miss('Wide spreads'),
+    ]
+    const score = scoreOf(checks)
+    const plan = (): ProPlan | undefined => {
+      if (noTradeReason) return undefined
+      const put = nearest(chain, lo), call = nearest(chain, hi)
+      if (!put || !call || put.strike >= chain.spot || call.strike <= chain.spot) return undefined
+      const credit = q(put, 'PE').bid + q(call, 'CE').bid
+      if (!(credit >= 1)) return undefined
+      const hours = Math.max(1, T * 252 * 6.25)
+      const pWin = rangeStayProbability(chain.spot, put.strike, call.strike, sigma, hours)
+      // Stop = 2× the credit (loss = one credit). Lots so that loss ≤ the smaller of the risk budget and 2% of capital.
+      const riskPerLot = credit * inp.lotSize
+      const budget = Math.min(inp.capital * inp.riskPct / 100, inp.capital * 0.02)
+      const lots = Math.min(10, Math.max(1, Math.floor(budget / riskPerLot)))
+      const qty = lots * inp.lotSize
+      const reward = credit * 0.5 * qty, risk = credit * qty
+      const expectancy = pWin * reward - (1 - pWin) * risk - chargesEst(qty, 2, credit / 2, credit / 2)
+      const exitAt = `${chain.expiry.slice(5)} 14:45`
+      return { kind: 'SELL STRANGLE', legs: [{ type: 'PE', action: 'Sell', strike: put.strike }, { type: 'CE', action: 'Sell', strike: call.strike }], premium: credit, stop: roundTick(credit * 2), target: roundTick(credit * 0.5), lots, qty, riskRupees: risk, rewardRupees: reward, pWin, expectancy, timeStop: exitAt, exitAt }
+    }
+    add({ id: 'sundar-strangle', name: 'Sundar far-OTM strangle', tagline: 'Sell the put at the support wall and the call at the resistance wall, each ≥ 1.5σ away, in the last two weeks, only when IV is high and nothing is trending. Book half the credit; cut at 2× — and hedge the threatened side instead of hoping',
+      source: { who: 'P R Sundar — workshop deck and public posts', what: 'Far-OTM put at support, call at resistance, "keep at least 400 points away", easier in the last two weeks, sell when VIX is high; portfolio stop 2–4% of capital; "most dangerous strategy in a trending market"', url: 'https://x.com/PRSundar64/status/1225434202264371201' },
+      claim: 'His public rules, not a published track record. SEBI settled an unregistered-advice case with him in May 2023 (₹6.07 cr disgorged, one-year trading ban). Sundar himself says the strangle is the most dangerous trade in a trend and that selling needs ₹25 lakh+ of capital.',
+      checks, score, window: '9:45–14:30, ≤ 14 days to expiry', plan })
+  }
+
+  // 15. Sundar expiry-day iron fly: sell the ATM straddle, buy the strangle one straddle-width out ("limited
+  //     risk, good to trade on expiry day"), "fire fight until 2:45 pm, then strict stop or exit". Start with
+  //     10% of capital — so one lot unless the account is large.
+  {
+    const width = Math.max(step, Math.round(atmStraddle / step) * step)
+    const checks = [
+      gate(expiryDay ? pass('Expiry day — "iron fly is good to trade on expiry day"') : miss('Not expiry day')),
+      gate(timeOk(9 * 60 + 45, 13 * 60 + 30) ? pass('9:45–13:30 — time for decay to work before the 14:45 cut-off') : miss('Enter between 9:45 and 13:30 on expiry day')),
+      gate(Math.abs(s.score) < 40 ? pass(`No trend (score ${s.score.toFixed(0)})`) : miss(`Trending (score ${s.score.toFixed(0)}) — a fly gets run over`)),
+      atmStraddle / chain.spot >= 0.003 ? pass(`Straddle ₹${atmStraddle.toFixed(0)} worth selling`) : miss(`Straddle ₹${atmStraddle.toFixed(0)} too thin`),
+      Math.abs(gap.pct) < 0.6 ? pass(`Gap ${gap.pct.toFixed(2)}% — calm open`) : miss(`Gap ${gap.pct.toFixed(2)}% — wild open`),
+      a.avgSpreadPctNearATM <= 3 ? pass('Liquid chain') : miss('Wide spreads'),
+    ]
+    const score = scoreOf(checks)
+    const plan = (): ProPlan | undefined => {
+      if (noTradeReason || !atmRow) return undefined
+      const pw = nearest(chain, atmRow.strike - width), cw = nearest(chain, atmRow.strike + width)
+      if (pw.strike >= atmRow.strike || cw.strike <= atmRow.strike) return undefined
+      const credit = q(atmRow, 'CE').bid + q(atmRow, 'PE').bid - q(pw, 'PE').ask - q(cw, 'CE').ask
+      if (!(credit >= 1)) return undefined
+      const maxLoss = Math.max(0.5, width - credit)
+      const qty = inp.lotSize
+      const hours = Math.max(0.5, (14 * 60 + 45 - minutes) / 60)
+      // Win = the index is still within one credit of the ATM strike at the 14:45 cut-off (the fly keeps most of the credit there).
+      const pWin = rangeStayProbability(chain.spot, atmRow.strike - credit, atmRow.strike + credit, sigma, hours)
+      const reward = credit * 0.4 * qty, risk = Math.min(maxLoss, credit * 0.6) * qty
+      const expectancy = pWin * reward - (1 - pWin) * risk - chargesEst(qty, 4, credit / 4, credit / 4)
+      return { kind: 'IRON FLY', legs: [{ type: 'CE', action: 'Sell', strike: atmRow.strike }, { type: 'PE', action: 'Sell', strike: atmRow.strike }, { type: 'PE', action: 'Buy', strike: pw.strike }, { type: 'CE', action: 'Buy', strike: cw.strike }],
+        premium: credit, stop: roundTick(credit * 1.6), target: roundTick(credit * 0.6), lots: 1, qty, riskRupees: risk, rewardRupees: reward, pWin, expectancy, timeStop: '14:45', exitAt: '14:45' }
+    }
+    add({ id: 'sundar-ironfly', name: 'Sundar expiry-day iron fly', tagline: 'Expiry day: sell the ATM straddle, buy the strangle one straddle-width out. Limited risk. Manage until 14:45, then strict stop or out',
+      source: { who: 'P R Sundar — workshop deck', what: 'Iron fly: sell ATM straddle, buy OTM strangle; limited risk; good to trade on expiry day. Expiry day: start with 10% of capital, keep fire-fighting until 2:45 pm, then strict stop loss or exit', url: 'https://pdfcoffee.com/option-strategies-p-r-sundar-pdf-free.html' },
+      claim: 'His rule, no published statistics. Students of his intraday-straddle course report stop-and-reverse days and heavy Bank Nifty slippage; nothing here is verified by OptionPulse.',
+      checks, score, window: 'Expiry 9:45–13:30', plan })
+  }
+
   // Rank: tradeable setups by expectancy per rupee risked, then fit.
   const tradeable = setups.filter((x) => x.plan && x.plan.expectancy > 0 && x.plan.riskRupees > 0)
   tradeable.sort((x, y) => (y.plan!.expectancy / y.plan!.riskRupees) * y.fit - (x.plan!.expectancy / x.plan!.riskRupees) * x.fit)
@@ -570,7 +655,7 @@ export function proStrategies(inp: ProInput): ProResult {
 }
 
 export const kindColor = (k: ProKind) => k === 'BUY CE' ? 'var(--green)' : k === 'BUY PE' ? 'var(--red)' : k === 'BUY STRADDLE' ? 'var(--purple)' : 'var(--orange)'
-export const kindLabel = (k: ProKind) => k === 'BUY CE' ? 'Buy call' : k === 'BUY PE' ? 'Buy put' : k === 'SELL STRADDLE' ? 'Sell straddle' : k === 'SELL STRANGLE' ? 'Sell strangle' : k === 'IRON CONDOR' ? 'Iron condor' : 'Buy straddle'
+export const kindLabel = (k: ProKind) => k === 'BUY CE' ? 'Buy call' : k === 'BUY PE' ? 'Buy put' : k === 'SELL STRADDLE' ? 'Sell straddle' : k === 'SELL STRANGLE' ? 'Sell strangle' : k === 'IRON CONDOR' ? 'Iron condor' : k === 'IRON FLY' ? 'Iron fly' : 'Buy straddle'
 
 /** Trade grade: A = the rules fit (≥ 80) and expectancy is at least a quarter of the risk; B = positive expectancy; C = no edge. */
 export type Grade = 'A' | 'B' | 'C'

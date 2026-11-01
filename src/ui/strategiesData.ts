@@ -3,7 +3,7 @@
 import type { Section, Settings } from '../data/appStore'
 import type { WinRate } from '../engine/quickBuys'
 
-export type Group = 'scalp' | 'buy' | 'sell' | 'risk' | 'traps' | 'rules'
+export type Group = 'scalp' | 'buy' | 'sell' | 'sundar' | 'risk' | 'traps' | 'rules'
 
 export interface Rule {
   id: string
@@ -23,13 +23,14 @@ export interface Rule {
   /** Strength of what is published: a counted backtest, an academic/regulator study, the author's claim, or nothing. */
   evidence?: 'backtest' | 'study' | 'claim' | 'none'
   /** One tap puts the rule to work in the app. */
-  apply?: { label: string; section: Section; top5?: { horizon?: 5 | 10 | 30; winRate?: WinRate }; board?: 'all' | 'buy' | 'sell' | 'pop90'; settings?: Partial<Settings> }
+  apply?: { label: string; section: Section; top5?: { horizon?: 5 | 10 | 30; winRate?: WinRate }; board?: 'all' | 'buy' | 'sell' | 'pop90' | 'sundar'; settings?: Partial<Settings> }
 }
 
 export const GROUPS: { id: Group; label: string; note: string }[] = [
   { id: 'scalp', label: 'Scalps', note: '5–30 minute buys' },
   { id: 'buy', label: 'Day buys', note: 'hold to target' },
   { id: 'sell', label: 'Selling', note: 'income trades' },
+  { id: 'sundar', label: 'PR Sundar', note: 'his public rules, seller first' },
   { id: 'risk', label: 'Risk', note: 'the rules that keep you in' },
   { id: 'traps', label: 'Traps', note: 'what quietly loses money' },
   { id: 'rules', label: 'SEBI 2026', note: 'rules that changed' },
@@ -39,6 +40,7 @@ const TOP5_30: Rule['apply'] = { label: 'Run 30-min scalps', section: 'top5', to
 const TOP5_10: Rule['apply'] = { label: 'Run 10-min scalps', section: 'top5', top5: { horizon: 10 } }
 const BOARD_BUY: Rule['apply'] = { label: 'Show buy setups', section: 'desk', board: 'buy' }
 const BOARD_SELL: Rule['apply'] = { label: 'Show selling setups', section: 'desk', board: 'sell' }
+const BOARD_SUNDAR: Rule['apply'] = { label: 'Run it live', section: 'desk', board: 'sundar' }
 
 export const RULES: Rule[] = [
   // ---------- Scalps ----------
@@ -385,6 +387,115 @@ export const RULES: Rule[] = [
     exit: 'The app’s ₹/trade figures already subtract estimated charges.',
     apply: { label: 'Set charges', section: 'settings' },
   },
+  // ---------- P R Sundar: what he says in public (workshop decks, X posts, interviews). Claims are his. ----------
+  {
+    id: 'sundar-strangle', evidence: 'claim', group: 'sundar', name: 'Far-OTM strangle at support and resistance', who: 'PR Sundar', when: 'Last 2 weeks before expiry · IV high', index: 'Nifty',
+    entry: 'Sell a put at the support wall and a call at the resistance wall, both far OTM (“keep at least 400 points away” — about 1.5σ today). Sell when VIX is high; in low VIX he buys or combines.',
+    exit: 'Book half the credit, or out by 14:45 on expiry. Never hold a naked strangle into a trend.',
+    stop: '2× the credit on the position, inside a portfolio stop of 2–4% of capital.',
+    notes: ['His own warning: “To 95% of option sellers, option selling means short strangle. In fact that is the most dangerous strategy in a trending market.”', 'The app runs this as “Sundar far-OTM strangle” on the board: walls + 1.5σ, IV percentile ≥ 40, ≤ 14 days to expiry, no trend.'],
+    claim: 'His public rules, no published track record.',
+    source: { label: 'PR Sundar on X — strangle warning', url: 'https://x.com/PRSundar64/status/1225434202264371201' },
+    apply: BOARD_SUNDAR,
+  },
+  {
+    id: 'sundar-ironfly', evidence: 'claim', group: 'sundar', name: 'Expiry-day iron fly', who: 'PR Sundar', when: 'Expiry day 9:45–13:30', index: 'Nifty',
+    entry: 'Sell the ATM straddle, buy the strangle one straddle-width out. “Limited risk strategy. Good to trade on expiry day.” Start with 10% of capital and add only as the day proves you right.',
+    exit: '“Keep fire-fighting until 2:45 pm.” After that strict stop or exit. Book at 40–60% of the credit.',
+    stop: 'The wings cap it; the app cuts at 1.6× the credit.',
+    notes: ['He says monthly expiry only, Nifty only. The app also offers it on the Tuesday weekly because that is where the premium is now — your call.'],
+    claim: 'His rule, no published statistics.',
+    source: { label: 'Option Strategies — workshop deck (copy)', url: 'https://pdfcoffee.com/option-strategies-p-r-sundar-pdf-free.html' },
+    apply: BOARD_SUNDAR,
+  },
+  {
+    id: 'sundar-straddle', evidence: 'claim', group: 'sundar', name: 'Far-month straddle in panic', who: 'PR Sundar', when: 'Panic days · just before big events', index: 'Nifty',
+    entry: 'Sell the ATM straddle of a far month, not the current one (“do not sell current month straddle”). Collect at least ₹400 per straddle, more when volatility is higher. Enter when the market is in panic or just before a big event.',
+    exit: 'Hold through the volatility crush; adjust the losing side with hedges, do not average.',
+    stop: 'Portfolio stop 2–4% of capital.',
+    notes: ['The app’s chains are weekly, so this one is a rule card only. Event days are blocked on the board for everyone.'],
+    source: { label: 'Option Strategies — workshop deck (copy)', url: 'https://pdfcoffee.com/option-strategies-p-r-sundar-pdf-free.html' },
+  },
+  {
+    id: 'sundar-ratio', evidence: 'claim', group: 'sundar', name: 'Ratio spread = strangle with some buying', who: 'PR Sundar', when: 'Instead of a naked strangle',
+    entry: 'Sell the far-OTM strangle, then buy fewer options further out or nearer to shape the risk. Directional or neutral depending on the ratio.',
+    exit: 'Change the ratio, not the view: more buys when the trend starts, fewer when it fades.',
+    notes: ['His fix for the strangle’s weakness: “Ratio spread is nothing but short strangle with some buying.”'],
+    source: { label: 'Option Strategies — workshop deck (copy)', url: 'https://pdfcoffee.com/option-strategies-p-r-sundar-pdf-free.html' },
+    apply: { label: 'Open the builder', section: 'strategy' },
+  },
+  {
+    id: 'sundar-backspread', evidence: 'claim', group: 'sundar', name: 'Backspreads before a binary event', who: 'PR Sundar', when: 'Day before Budget, elections, RBI, US CPI',
+    entry: 'Call backspread: sell 1 ITM call, buy 2 OTM calls. Put backspread mirrors it. Double backspread does both — it wins on a big move either way.',
+    exit: 'Out right after the event. It loses if the market stays range-bound, so never hold it through a quiet week.',
+    notes: ['The butterfly is his “immune to a black swan” structure: buys must equal or exceed sells.'],
+    source: { label: 'Option Strategies — workshop deck (copy)', url: 'https://pdfcoffee.com/option-strategies-p-r-sundar-pdf-free.html' },
+    apply: { label: 'Open the builder', section: 'strategy' },
+  },
+  {
+    id: 'sundar-calendar', evidence: 'claim', group: 'sundar', name: 'Calendars for a slow view', who: 'PR Sundar', when: 'Positional',
+    entry: 'Bullish: sell the current-month put, buy the next-month put. Bearish: sell the current-month call, buy next month’s, and sell a far-OTM next-month call. Neutral: both (double calendar).',
+    exit: 'Close before the near leg expires. Limited risk, limited reward.',
+    source: { label: 'Option Strategies — workshop deck (copy)', url: 'https://pdfcoffee.com/option-strategies-p-r-sundar-pdf-free.html' },
+  },
+  {
+    id: 'sundar-collar', evidence: 'claim', group: 'sundar', name: 'Collar and “Ironed collar”', who: 'PR Sundar', when: 'Bullish, positional', index: 'Bank Nifty',
+    entry: 'Long futures (or stock), sell a call, buy a put for protection, then keep rolling the call for yield. The Ironed Collar is his paid Bank Nifty version with adjustments.',
+    exit: 'Roll the call up when the market runs; roll down when it stalls.',
+    notes: ['Course testimonials claim 8–20% a month. Those are students’ own words, unaudited. Other students report margin calls above ₹3 lakh and no help with adjustments.'],
+    claim: '10–20% a month (student testimonials, unverified).',
+    source: { label: 'workshop.prsundar.com — Ironed Collar', url: 'https://workshop.prsundar.com/course/40/ironed-collar-options-strategy-with-adjustments-with-recorded-q' },
+  },
+  {
+    id: 'sundar-capital', evidence: 'claim', group: 'sundar', name: 'Capital and allocation', who: 'PR Sundar', when: 'Before the first trade',
+    entry: 'Selling needs big money: his workshops ask for ₹25 lakh minimum and he “always discourages people with tiny capital doing options trading”. Run 5–6 strategies at 10–12% each, keep 40% in cash for one-day trades.',
+    exit: 'Take profits out regularly into quality stocks and hedge those too.',
+    stop: 'Portfolio stop 2–4% of capital. Keep at least one structure that survives a black swan.',
+    notes: ['Small account? He says buy, or combine buy and sell in low VIX — that is what Today’s Pick and Top 5 do.'],
+    source: { label: 'PR Sundar on X — capital', url: 'https://x.com/PRSundar64/status/1696158361501261954' },
+    apply: { label: 'Set capital & risk', section: 'settings' },
+  },
+  {
+    id: 'sundar-ten', evidence: 'claim', group: 'sundar', name: 'It is not about the strike', who: 'PR Sundar', when: 'Always',
+    entry: '“Option selling is not about what strike price you sell, it is about 1. Position sizing 2. Views 3. Risk management 4. Margin management 5. Fire-fighting skills 6. Conviction 7. Guts 8. Psychology 9. Risk–reward 10. Expectation.”',
+    exit: 'Fire-fighting = adjust the threatened side with a hedge or a roll, early. Never average a loser.',
+    source: { label: 'PR Sundar on X — the ten things', url: 'https://twitter.com/PRSundar64/status/1264730476125683714' },
+    apply: { label: 'Open Journal', section: 'journal' },
+  },
+  {
+    id: 'sundar-hedge', evidence: 'claim', group: 'sundar', name: '“Hedge is the edge”', who: 'PR Sundar', when: 'Every short position',
+    entry: 'Never carry a naked directional short. His example: short Nifty futures, sold puts against it; a 300-point rally still left a small profit. Prefer longer-dated options — “safer” — while 90% of the crowd trades the current week.',
+    exit: 'Keep adding the hedge side as the market moves; the hedge pays for the mistake.',
+    source: { label: 'PR Sundar on X — hedge is the edge', url: 'https://x.com/PRSundar64/status/1104403894728179718' },
+  },
+  {
+    id: 'sundar-vix', evidence: 'claim', group: 'sundar', name: 'VIX decides buy or sell', who: 'PR Sundar', when: 'Before the day starts',
+    entry: 'Sell when India VIX is high, buy when it is low — “how low is low and how high is high is relative”, so use IV percentile, not the raw number. In low VIX a buy + sell combination is better than either alone.',
+    exit: 'When VIX jumps mid-position, sellers add hedges, buyers book.',
+    notes: ['The app’s IV percentile tile is this number. His strangle on the board needs it ≥ 40.'],
+    source: { label: 'PR Sundar on X — low VIX combination', url: 'https://x.com/PRSundar64/status/1801504587020480880' },
+  },
+  {
+    id: 'sundar-supertrend', evidence: 'claim', group: 'sundar', name: 'Direction filter: hourly Supertrend', who: 'PR Sundar', when: 'Picking a side',
+    entry: 'Hourly chart, Heikin Ashi candles, Supertrend. Three green lines and arrows → long bias; three red → short bias. “Do not play with futures. Play only with options.”',
+    exit: 'Flip the bias only when the hourly flips, not on a 5-minute wiggle.',
+    source: { label: 'Options Trading Workshop — deck (copy)', url: 'https://pdfcoffee.com/prsundar-options-trading-workshop-pdf-free.html' },
+  },
+  {
+    id: 'sundar-index-only', evidence: 'claim', group: 'sundar', name: 'Index only, avoid small caps', who: 'PR Sundar', when: 'Choosing what to trade',
+    entry: 'Trade index options. Stock options carry physical-delivery margins near expiry and single-stock news risk. No small cap, mid cap or penny stocks in the portfolio; “good quality mid cap is OK”.',
+    exit: 'Keep the cash book in quality large caps and hedge it with long-dated options.',
+    notes: ['Complaints tied to his Infosys results-day example: sold calls against a 20% two-day surge, margin multiplied, one account claims an ₹8 lakh loss. Unverified, but it is the exact risk this rule is about.'],
+    source: { label: 'Mission Options — notes', url: 'https://optionsmaddy.github.io/p/pr-sundar-mission-options-full/' },
+  },
+  {
+    id: 'sundar-record', group: 'sundar', name: 'Know who you are copying', who: 'PR Sundar', when: 'Before you trust any of this',
+    entry: 'No audited track record is public. In May 2023 he, his wife and Mansun Consultancy settled a SEBI case for giving investment advice without registration: ₹6.07 crore disgorged, ₹46.8 lakh settlement, one year out of the market. In Dec 2023 he said he would focus more on option buying when he returned.',
+    exit: 'Use his rules as rules — sizing, hedging, VIX, time — not as a promise. Your Journal is the only track record that counts.',
+    source: { label: 'SEBI settlement order, 25 May 2023', url: 'https://www.sebi.gov.in/sebi_data/attachdocs/may-2023/1685095933750.pdf' },
+    apply: { label: 'Open Journal', section: 'journal' },
+  },
+
   // ---------- Added from the Nov 2026 evidence review ----------
   {
     id: 'first-candle', evidence: 'backtest', group: 'scalp', name: 'Big first candle → ride it', when: '9:30–10:45', index: 'Nifty',

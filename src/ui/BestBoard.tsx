@@ -10,12 +10,13 @@ import { type ProResult, type ProSetup, gradeColor, gradeOf, kindColor, kindLabe
 import { legFromChain } from '../engine/strategyEngine'
 import { Icon, Sheet, changeColor } from './components'
 
-type Mode = 'all' | 'buy' | 'sell' | 'pop90'
+type Mode = 'all' | 'buy' | 'sell' | 'pop90' | 'sundar'
 const MODES: { id: Mode; label: string; hint: string }[] = [
   { id: 'all', label: 'All', hint: 'best strategy per index' },
   { id: 'buy', label: 'Buy', hint: 'directional option buys' },
   { id: 'sell', label: 'Sell', hint: 'premium-selling setups' },
   { id: 'pop90', label: '≈90% POP', hint: 'high-probability income condor' },
+  { id: 'sundar', label: 'PR Sundar', hint: 'his far-OTM strangle and expiry iron fly' },
 ]
 
 const isBuy = (st: ProSetup) => !!st.plan && st.plan.kind.startsWith('BUY') && st.plan.kind !== 'BUY STRADDLE'
@@ -27,8 +28,14 @@ function pick(pro: ProResult | undefined, mode: Mode): { setup?: ProSetup; trade
   if (!pro) return { tradeable: false }
   if (mode === 'all') return { setup: pro.best ?? pro.setups[0], tradeable: !!pro.best }
   if (mode === 'pop90') { const st = pro.setups.find((x) => x.id === 'pop90-condor'); return { setup: st, tradeable: !!st?.plan && st.plan.expectancy > 0 } }
+  if (mode === 'sundar') {
+    const mine = pro.setups.filter((x) => x.id.startsWith('sundar-'))
+    const live = mine.filter((x) => x.plan && x.plan.expectancy > 0).sort((x, y) => strength(y) - strength(x))
+    if (live[0]) return { setup: live[0], tradeable: true }
+    return { setup: [...mine].sort((x, y) => y.fit - x.fit)[0], tradeable: false }
+  }
   const want = mode === 'buy' ? isBuy : isSell
-  const kinds = (st: ProSetup) => mode === 'buy' ? ['orb-cpr', '5ema', 'vwap-scalp', 'gap-fade', 'oi-pin', 'pcr-extreme', 'late-fade'].includes(st.id) : ['920-straddle', 'expiry-strangle', 'range-condor', 'oi-strangle', 'pop90-condor', 'vol-spike'].includes(st.id)
+  const kinds = (st: ProSetup) => mode === 'buy' ? ['orb-cpr', '5ema', 'vwap-scalp', 'gap-fade', 'oi-pin', 'pcr-extreme', 'late-fade'].includes(st.id) : ['920-straddle', 'expiry-strangle', 'range-condor', 'oi-strangle', 'pop90-condor', 'vol-spike', 'sundar-strangle', 'sundar-ironfly'].includes(st.id)
   const tradeable = pro.setups.filter((x) => want(x) && x.plan!.expectancy > 0).sort((x, y) => strength(y) - strength(x))
   if (tradeable[0]) return { setup: tradeable[0], tradeable: true }
   const waiting = pro.setups.filter(kinds).sort((x, y) => y.fit - x.fit)
